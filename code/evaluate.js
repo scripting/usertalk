@@ -2,11 +2,11 @@
 	langevaluate.c: an object-database tree is the global namespace,
 	locals live in frames, handlers close over their defining frames,
 	identifier lookup is case-insensitive everywhere.
-
+	
 	by CC, 7/27/26 */
 
 function makeEnvironment (theOdb, theVerbs, theTrace) {
-
+	
 	const environment = {
 		odb: theOdb, //a plain object tree standing in for the ODB
 		verbs: theVerbs, //lowercase dotted verb name -> function (args, environment)
@@ -69,16 +69,16 @@ function ReturnSignal (theValue) {
 	}
 
 function evaluate (theStatements, environment) {
-
+	
 	/*  Run a statement list. Returns the value of the last expression
 		statement, the way Frontier scripts return their last value.  */
-
+	
 	var lastValue;
-
+	
 	//references: a {get, set} pair for anything assignable
-
+	
 	function referenceForId (theName) {
-
+		
 		var ixFrame;
 		for (ixFrame = environment.frames.length - 1; ixFrame >= 0; ixFrame--) {
 			const vars = environment.frames [ixFrame].vars;
@@ -94,7 +94,7 @@ function evaluate (theStatements, environment) {
 					});
 				}
 			}
-
+		
 		var ixWith;
 		for (ixWith = environment.withPaths.length - 1; ixWith >= 0; ixWith--) {
 			const withTable = environment.withPaths [ixWith];
@@ -110,7 +110,7 @@ function evaluate (theStatements, environment) {
 					});
 				}
 			}
-
+		
 		const odbKey = findKey (environment.odb, theName);
 		if (odbKey !== undefined) {
 			return ({
@@ -122,14 +122,14 @@ function evaluate (theStatements, environment) {
 					}
 				});
 			}
-
+		
 		return (undefined);
 		}
-
+	
 	function referenceForNode (theNode) {
-
+		
 		switch (theNode.op) {
-
+			
 			case "id": {
 				const existing = referenceForId (theNode.name);
 				if (existing !== undefined) {
@@ -146,12 +146,12 @@ function evaluate (theStatements, environment) {
 						}
 					});
 				}
-
+			
 			case "computedid": {
 				const name = evalExpr (theNode.expr);
 				return (referenceForNode ({op: "id", name: String (name)}));
 				}
-
+			
 			case "dot": {
 				const container = evalExpr (theNode.left);
 				if ((container === undefined) || (container === null) || (typeof container !== "object")) {
@@ -172,7 +172,7 @@ function evaluate (theStatements, environment) {
 						}
 					});
 				}
-
+			
 			case "index": {
 				const container = evalExpr (theNode.left);
 				const index = evalExpr (theNode.index);
@@ -216,19 +216,19 @@ function evaluate (theStatements, environment) {
 				const message = "Can't subscript the value because it isn't a list or a table.";
 				throw new Error (message);
 				}
-
+			
 			case "deref": {
 				const address = evalExpr (theNode.expr);
 				return (referenceForAddress (address));
 				}
-
+			
 			default: {
 				const message = "Can't assign into a " + theNode.op + " expression.";
 				throw new Error (message);
 				}
 			}
 		}
-
+	
 	function referenceForAddress (theAddress) {
 		if ((theAddress === undefined) || (theAddress.flAddress !== true)) {
 			const message = "Can't dereference the value because it isn't an address.";
@@ -236,23 +236,23 @@ function evaluate (theStatements, environment) {
 			}
 		return (theAddress.reference);
 		}
-
+	
 	//expressions
-
+	
 	function coerceForCompare (left, right) {
 		if ((typeof left === "string") && (typeof right === "string")) { //Frontier string comparison is case-insensitive
 			return ({left: left.toLowerCase (), right: right.toLowerCase ()});
 			}
 		return ({left, right});
 		}
-
+	
 	function evalExpr (theNode) {
-
+		
 		switch (theNode.op) {
-
+			
 			case "const":
 				return (theNode.value);
-
+			
 			case "list": {
 				const items = [];
 				theNode.items.forEach (function (item) {
@@ -260,7 +260,7 @@ function evaluate (theStatements, environment) {
 					});
 				return (items);
 				}
-
+			
 			case "id": {
 				const reference = referenceForId (theNode.name);
 				if (reference === undefined) {
@@ -273,10 +273,10 @@ function evaluate (theStatements, environment) {
 					}
 				return (reference.get ());
 				}
-
+			
 			case "computedid":
 				return (referenceForNode (theNode).get ());
-
+			
 			case "dot": {
 				//try a verb first: file.copy is a verb, not a table walk
 				const dottedName = dottedNameForNode (theNode);
@@ -288,50 +288,50 @@ function evaluate (theStatements, environment) {
 					}
 				return (referenceForNode (theNode).get ());
 				}
-
+			
 			case "index":
 				return (referenceForNode (theNode).get ());
-
+			
 			case "address": {
 				const reference = referenceForNode (theNode.expr);
 				return ({flAddress: true, reference, pathText: pathTextForNode (theNode.expr)});
 				}
-
+			
 			case "deref":
 				return (referenceForAddress (evalExpr (theNode.expr)).get ());
-
+			
 			case "call":
 				return (evalCall (theNode));
-
+			
 			case "not":
 				return (!flTrue (evalExpr (theNode.expr)));
-
+			
 			case "negate":
 				return (-evalExpr (theNode.expr));
-
+			
 			case "preincrement": case "postincrement": {
 				const reference = referenceForNode (theNode.expr);
 				const oldValue = reference.get ();
 				reference.set (oldValue + 1);
 				return (theNode.op === "preincrement" ? oldValue + 1 : oldValue);
 				}
-
+			
 			case "predecrement": case "postdecrement": {
 				const reference = referenceForNode (theNode.expr);
 				const oldValue = reference.get ();
 				reference.set (oldValue - 1);
 				return (theNode.op === "predecrement" ? oldValue - 1 : oldValue);
 				}
-
+			
 			case "and":
 				return (flTrue (evalExpr (theNode.left)) && flTrue (evalExpr (theNode.right)));
-
+			
 			case "or":
 				return (flTrue (evalExpr (theNode.left)) || flTrue (evalExpr (theNode.right)));
-
+			
 			case "add":
 				return (evalExpr (theNode.left) + evalExpr (theNode.right));
-
+			
 			case "subtract": {
 				const left = evalExpr (theNode.left), right = evalExpr (theNode.right);
 				if ((typeof left === "string") || (typeof right === "string")) { //Frontier: "abc:" - ":" strips the suffix
@@ -343,75 +343,75 @@ function evaluate (theStatements, environment) {
 					}
 				return (left - right);
 				}
-
+			
 			case "multiply":
 				return (evalExpr (theNode.left) * evalExpr (theNode.right));
-
+			
 			case "divide":
 				return (evalExpr (theNode.left) / evalExpr (theNode.right));
-
+			
 			case "mod":
 				return (evalExpr (theNode.left) % evalExpr (theNode.right));
-
+			
 			case "eq": {
 				const pair = coerceForCompare (evalExpr (theNode.left), evalExpr (theNode.right));
 				return (pair.left == pair.right); //loose on purpose: Frontier coerces across types
 				}
-
+			
 			case "ne": {
 				const pair = coerceForCompare (evalExpr (theNode.left), evalExpr (theNode.right));
 				return (pair.left != pair.right);
 				}
-
+			
 			case "lt": {
 				const pair = coerceForCompare (evalExpr (theNode.left), evalExpr (theNode.right));
 				return (pair.left < pair.right);
 				}
-
+			
 			case "gt": {
 				const pair = coerceForCompare (evalExpr (theNode.left), evalExpr (theNode.right));
 				return (pair.left > pair.right);
 				}
-
+			
 			case "le": {
 				const pair = coerceForCompare (evalExpr (theNode.left), evalExpr (theNode.right));
 				return (pair.left <= pair.right);
 				}
-
+			
 			case "ge": {
 				const pair = coerceForCompare (evalExpr (theNode.left), evalExpr (theNode.right));
 				return (pair.left >= pair.right);
 				}
-
+			
 			case "beginswith": {
 				const pair = coerceForCompare (String (evalExpr (theNode.left)), String (evalExpr (theNode.right)));
 				return (pair.left.startsWith (pair.right));
 				}
-
+			
 			case "endswith": {
 				const pair = coerceForCompare (String (evalExpr (theNode.left)), String (evalExpr (theNode.right)));
 				return (pair.left.endsWith (pair.right));
 				}
-
+			
 			case "contains": {
 				const pair = coerceForCompare (String (evalExpr (theNode.left)), String (evalExpr (theNode.right)));
 				return (pair.left.indexOf (pair.right) !== -1);
 				}
-
+			
 			case "namedarg":
 				return (evalExpr (theNode.value));
-
+			
 			default: {
 				const message = "Can't evaluate the expression because the operator " + theNode.op + " isn't implemented.";
 				throw new Error (message);
 				}
 			}
 		}
-
+	
 	function flTrue (theValue) {
 		return ((theValue !== false) && (theValue !== undefined) && (theValue !== 0) && (theValue !== ""));
 		}
-
+	
 	function dottedNameForNode (theNode) { //x.y.z as a string, or undefined if it isn't a plain path
 		if (theNode.op === "id") {
 			return (theNode.name);
@@ -425,7 +425,7 @@ function evaluate (theStatements, environment) {
 			}
 		return (undefined);
 		}
-
+	
 	function pathTextForNode (theNode) {
 		const dotted = dottedNameForNode (theNode);
 		if (dotted !== undefined) {
@@ -433,18 +433,18 @@ function evaluate (theStatements, environment) {
 			}
 		return ("(computed)");
 		}
-
+	
 	function evalCall (theNode) {
-
+		
 		const args = [];
 		theNode.args.forEach (function (argNode) {
 			args.push (evalExpr (argNode));
 			});
-
+		
 		//a handler defined in scope?
-
+		
 		const dottedName = dottedNameForNode (theNode.fn);
-
+		
 		if (theNode.fn.op === "id") {
 			const reference = referenceForId (theNode.fn.name);
 			if (reference !== undefined) {
@@ -454,7 +454,7 @@ function evaluate (theStatements, environment) {
 					}
 				}
 			}
-
+		
 		if (dottedName !== undefined) {
 			const verb = environment.verbs [dottedName.toLowerCase ()];
 			if (verb !== undefined) {
@@ -488,7 +488,7 @@ function evaluate (theStatements, environment) {
 			const message = "Can't call " + dottedName + " because it isn't a verb, a handler or a script.";
 			throw new Error (message);
 			}
-
+		
 		//calling through a computed value
 		const fn = evalExpr (theNode.fn);
 		if ((fn !== undefined) && (fn.flHandler === true)) {
@@ -501,14 +501,14 @@ function evaluate (theStatements, environment) {
 		const message = "Can't call " + pathTextForNode (theNode.fn) + " because it isn't a verb, a handler or a script.";
 		throw new Error (message);
 		}
-
+	
 	function callHandler (theHandler, theArgs) {
-
+		
 		const frame = {vars: {}};
-
+		
 		const savedFrames = environment.frames;
 		environment.frames = theHandler.closureFrames.concat ([frame]);
-
+		
 		theHandler.params.forEach (function (param, ixParam) {
 			var value = theArgs [ixParam];
 			if (value === undefined) {
@@ -518,7 +518,7 @@ function evaluate (theStatements, environment) {
 				}
 			frame.vars [param.name] = value;
 			});
-
+		
 		try {
 			const result = evaluate (theHandler.body, environment);
 			return (result);
@@ -533,13 +533,13 @@ function evaluate (theStatements, environment) {
 			environment.frames = savedFrames;
 			}
 		}
-
+	
 	function callOdbScript (theScript, theArgs, theName) {
-
+		
 		/*  A script value from the odb, called like a verb: parse it once,
 			evaluate its module (skipping test-code bundles), then call the
 			handler named for it -- Frontier's script-call semantics.  */
-
+		
 		if (theScript.parsedStatements === undefined) {
 			if (environment.parseScript === undefined) {
 				const message = "Can't call " + theName + " because no script parser is installed.";
@@ -547,11 +547,11 @@ function evaluate (theStatements, environment) {
 				}
 			theScript.parsedStatements = environment.parseScript (theScript.lines);
 			}
-
+		
 		const moduleFrame = {vars: {}};
 		const savedFrames = environment.frames;
 		environment.frames = [moduleFrame];
-
+		
 		try {
 			const statements = [];
 			theScript.parsedStatements.forEach (function (statement) {
@@ -560,11 +560,11 @@ function evaluate (theStatements, environment) {
 					}
 				});
 			const moduleValue = evaluate (statements, environment);
-
+			
 			const parts = theName.split (".");
 			const shortName = parts [parts.length - 1];
 			var handlerKey = findKey (moduleFrame.vars, shortName);
-
+			
 			if (handlerKey === undefined) {
 				const handlerNames = [];
 				Object.keys (moduleFrame.vars).forEach (function (key) {
@@ -582,12 +582,12 @@ function evaluate (theStatements, environment) {
 						}
 					}
 				}
-
+			
 			if (handlerKey === undefined) {
 				const message = "Can't call " + theName + " because its script doesn't define a handler by that name.";
 				throw new Error (message);
 				}
-
+			
 			return (callHandler (moduleFrame.vars [handlerKey], theArgs));
 			}
 		catch (err) {
@@ -598,31 +598,31 @@ function evaluate (theStatements, environment) {
 			environment.frames = savedFrames;
 			}
 		}
-
+	
 	function currentFrame () {
 		if (environment.frames.length === 0) {
 			environment.frames.push ({vars: {}});
 			}
 		return (environment.frames [environment.frames.length - 1]);
 		}
-
+	
 	function runBody (theBody) {
 		return (evaluate (theBody, environment));
 		}
-
+	
 	//statements
-
+	
 	theStatements.forEach (function (statement) {
-
+		
 		switch (statement.op) {
-
+			
 			case "noop":
 				break;
-
+			
 			case "sequence":
 				lastValue = evaluate (statement.statements, environment);
 				break;
-
+			
 			case "handler": {
 				const handlerRec = {
 					flHandler: true,
@@ -634,7 +634,7 @@ function evaluate (theStatements, environment) {
 				currentFrame ().vars [statement.name] = handlerRec;
 				break;
 				}
-
+			
 			case "local": case "global": {
 				statement.inits.forEach (function (init) {
 					var value;
@@ -652,15 +652,15 @@ function evaluate (theStatements, environment) {
 					});
 				break;
 				}
-
+			
 			case "assign":
 				referenceForNode (statement.target).set (evalExpr (statement.value));
 				break;
-
+			
 			case "expression":
 				lastValue = evalExpr (statement.expr);
 				break;
-
+			
 			case "if":
 				if (flTrue (evalExpr (statement.test))) {
 					runBody (statement.body);
@@ -671,20 +671,20 @@ function evaluate (theStatements, environment) {
 						}
 					}
 				break;
-
+			
 			case "loop": case "loop3": case "while": {
 				var guard = 0;
 				const maxIterations = 1000000;
-
+				
 				if (statement.op === "loop3") {
 					evaluate ([statement.init], environment);
 					}
-
+				
 				var count;
 				if ((statement.op === "loop") && (statement.count !== undefined)) {
 					count = evalExpr (statement.count);
 					}
-
+				
 				while (true) {
 					guard++;
 					if (guard > maxIterations) {
@@ -717,7 +717,7 @@ function evaluate (theStatements, environment) {
 					}
 				break;
 				}
-
+			
 			case "for": {
 				const from = evalExpr (statement.from);
 				const limit = evalExpr (statement.limit);
@@ -739,7 +739,7 @@ function evaluate (theStatements, environment) {
 					}
 				break;
 				}
-
+			
 			case "forin": {
 				const list = evalExpr (statement.list);
 				var items = list;
@@ -771,7 +771,7 @@ function evaluate (theStatements, environment) {
 					});
 				break;
 				}
-
+			
 			case "fileloop": {
 				const folder = evalExpr (statement.folder);
 				var depth = 1;
@@ -805,11 +805,11 @@ function evaluate (theStatements, environment) {
 					});
 				break;
 				}
-
+			
 			case "bundle":
 				runBody (statement.body);
 				break;
-
+			
 			case "with": {
 				const table = evalExpr (statement.path);
 				var withTable = table;
@@ -825,7 +825,7 @@ function evaluate (theStatements, environment) {
 					}
 				break;
 				}
-
+			
 			case "try":
 				try {
 					runBody (statement.body);
@@ -840,7 +840,7 @@ function evaluate (theStatements, environment) {
 						}
 					}
 				break;
-
+			
 			case "case": {
 				const value = evalExpr (statement.value);
 				var flMatched = false;
@@ -859,23 +859,23 @@ function evaluate (theStatements, environment) {
 					}
 				break;
 				}
-
+			
 			case "return":
 				throw new ReturnSignal (statement.value === undefined ? undefined : evalExpr (statement.value));
-
+			
 			case "break":
 				throw new BreakSignal ();
-
+			
 			case "continue":
 				throw new ContinueSignal ();
-
+			
 			default: {
 				const message = "Can't run the statement because the operator " + statement.op + " isn't implemented.";
 				throw new Error (message);
 				}
 			}
 		});
-
+	
 	return (lastValue);
 	}
 

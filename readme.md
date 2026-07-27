@@ -38,6 +38,7 @@ Runs one script outline; add `--trace` to see every verb call. Start in [example
 	- **usertalk.js** -- the package front door.
 	- **run.js / runAll.js / parseAll.js / parseSuite.js** -- runners and corpus tests.
 - **examples/** -- working UserTalk programs to run and crib from.
+- **source.opml** -- the whole package as one outline, for reading in an outliner. Generated from the files; every file renders back from it byte-identical.
 
 The research run that produced all this -- the report, the verb-surface survey of every verb called across the corpus, and the harness that renders projects from the ODB -- is preserved in misc/research/.
 

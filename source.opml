@@ -1,0 +1,3538 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- the usertalk package as one outline, generated from the files by misc/buildSourceOpml.js -->
+<opml version="2.0">
+	<head>
+		<title>usertalk</title>
+		</head>
+	<body>
+		<outline text="usertalk">
+			<outline text="package.json">
+				<outline text="{">
+					<outline text="&quot;name&quot;: &quot;usertalk&quot;,"/>
+					<outline text="&quot;description&quot;: &quot;The UserTalk language, running on Node -- parser, evaluator, and verb library for the scripting language of UserLand Frontier.&quot;,"/>
+					<outline text="&quot;author&quot;: &quot;Dave Winer &lt;dave@scripting.com&gt;&quot;,"/>
+					<outline text="&quot;version&quot;: &quot;0.1.0&quot;,"/>
+					<outline text="&quot;main&quot;: &quot;code/usertalk.js&quot;,"/>
+					<outline text="&quot;files&quot;: [">
+						<outline text="&quot;readme.md&quot;"/>
+						<outline text="],"/>
+						</outline>
+					<outline text="&quot;dependencies&quot;: {">
+						<outline text="}"/>
+						</outline>
+					<outline text="}"/>
+					</outline>
+				</outline>
+			<outline text="readme.md">
+				<outline text="# usertalk"/>
+				<outline text=""/>
+				<outline text="The UserTalk language, running on Node."/>
+				<outline text=""/>
+				<outline text="UserTalk is the scripting language of [UserLand Frontier](http://frontier.userland.com/). This package is a clean-room implementation built from the Frontier kernel's own grammar (langparser.y) and evaluator (langevaluate.c) -- a tokenizer and parser that turn UserTalk script outlines into ASTs, a tree-walking evaluator with Frontier's semantics, and a verb library that maps the built-in verbs onto Node."/>
+				<outline text=""/>
+				<outline text="It runs against real object databases through [frontierOdb](https://github.com/scripting/frontierOdb) -- the ODB is the global namespace, dotted paths resolve case-insensitively, addresses are live references, and a path that lands on a script parses it on first call and calls it. Your old code runs on your old data."/>
+				<outline text=""/>
+				<outline text="### Status"/>
+				<outline text=""/>
+				<outline text="Born 7/27/2026 from an overnight research run that asked: can decades of Frontier build scripts run unchanged on a modern machine? The answer was yes:"/>
+				<outline text=""/>
+				<outline text="1. **Parse rate: 100%** over both corpora tried -- 361 of 361 build scripts, and 749 of 749 scripts of a production suite (~33,000 lines of UserTalk written across four decades)."/>
+				<outline text="2. **336 of 361 build scripts execute clean** against the real object database, with a dry-run file layer."/>
+				<outline text="3. **The end-to-end proof:** a real build script ran unchanged -- outline rendered to files, the script's own copyone handler executing real file verbs -- and produced a folder byte-identical to what Frontier ships, 6 of 6 files."/>
+				<outline text=""/>
+				<outline text="### What's real and what's stubbed"/>
+				<outline text=""/>
+				<outline text="Real: the language (handlers, loops, with, case, try, addresses, local/global scoping, the operator set), file.* over the filesystem behind a Mac-colon-path map, string.*, clock/date, typeof/sizeof/defined/nameof/new, and ODB scripts as callable values."/>
+				<outline text=""/>
+				<outline text="Stubs, loud ones -- every unimplemented verb announces itself, nothing silently succeeds: op.*, target.*, wp.*, xml.*, s3.*, tcp.*. The plan is to make them real as working scripts need them."/>
+				<outline text=""/>
+				<outline text="### Running a script"/>
+				<outline text=""/>
+				<outline text="```"/>
+				<outline text="node code/run.js examples/hello/hello.opml"/>
+				<outline text="```"/>
+				<outline text=""/>
+				<outline text="Runs one script outline; add `--trace` to see every verb call. Start in [examples](examples/) -- each one is a working UserTalk program with a readme. `runAll.js` runs a whole folder of scripts and writes a report naming exactly which verbs each failing script needs -- that report is the work list."/>
+				<outline text=""/>
+				<outline text="### The repo"/>
+				<outline text=""/>
+				<outline text="- **code/** -- the interpreter.">
+					<outline text="- **parse.js** -- tokenizer and recursive-descent parser, grammar from langparser.y."/>
+					<outline text="- **evaluate.js** -- the evaluator, semantics from langevaluate.c."/>
+					<outline text="- **verbs.js** -- the verb library."/>
+					<outline text="- **odbLoader.js** -- loads .root and .fttb files into the namespace via frontierOdb."/>
+					<outline text="- **usertalk.js** -- the package front door."/>
+					<outline text="- **run.js / runAll.js / parseAll.js / parseSuite.js** -- runners and corpus tests."/>
+					</outline>
+				<outline text="- **examples/** -- working UserTalk programs to run and crib from."/>
+				<outline text="- **source.opml** -- the whole package as one outline, for reading in an outliner. Generated from the files; every file renders back from it byte-identical."/>
+				<outline text=""/>
+				<outline text="The research run that produced all this -- the report, the verb-surface survey of every verb called across the corpus, and the harness that renders projects from the ODB -- is preserved in misc/research/."/>
+				<outline text=""/>
+				<outline text="***"/>
+				<outline text=""/>
+				<outline text="*By Claude Code, with Dave Winer driving. UserTalk and Frontier by Dave Winer, UserLand Software.*"/>
+				</outline>
+			<outline text="code/parse.js">
+				<outline text="/*  Parse UserTalk into an AST. The grammar is langparser.y from the">
+					<outline text="Frontier kernel; the input is outline-structured code -- each line is"/>
+					<outline text="one statement or block header, its children are its block. There are"/>
+					<outline text="no braces."/>
+					<outline text=""/>
+					<outline text="Precedence, from the yacc declarations, loosest first:"/>
+					<outline text=", then = (assign) then or then and then == != then &lt; &gt; &lt;= &gt;="/>
+					<outline text="beginswith endswith contains then + - then * / mod then not then"/>
+					<outline text="++ -- unary-minus @ then ^ then ."/>
+					<outline text=""/>
+					<outline text="by CC, 7/27/26 */"/>
+					</outline>
+				<outline text=""/>
+				<outline text="const keywords = [">
+					<outline text="&quot;if&quot;, &quot;else&quot;, &quot;loop&quot;, &quot;fileloop&quot;, &quot;in&quot;, &quot;break&quot;, &quot;return&quot;, &quot;bundle&quot;,"/>
+					<outline text="&quot;local&quot;, &quot;global&quot;, &quot;on&quot;, &quot;while&quot;, &quot;case&quot;, &quot;kernel&quot;, &quot;for&quot;, &quot;to&quot;,"/>
+					<outline text="&quot;downto&quot;, &quot;continue&quot;, &quot;with&quot;, &quot;try&quot;, &quot;and&quot;, &quot;or&quot;, &quot;not&quot;,"/>
+					<outline text="&quot;beginswith&quot;, &quot;endswith&quot;, &quot;contains&quot;, &quot;mod&quot;"/>
+					<outline text="];"/>
+					</outline>
+				<outline text=""/>
+				<outline text="function tokenize (theText) {">
+					<outline text=""/>
+					<outline text="const tokens = [];"/>
+					<outline text="var ix = 0;"/>
+					<outline text=""/>
+					<outline text="function error (message) {">
+						<outline text="throw new Error (&quot;Can't tokenize the line because &quot; + message);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="while (ix &lt; theText.length) {">
+						<outline text=""/>
+						<outline text="const ch = theText.charAt (ix);"/>
+						<outline text=""/>
+						<outline text="if ((ch === &quot; &quot;) || (ch === &quot;\t&quot;)) {">
+							<outline text="ix++;"/>
+							<outline text="continue;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text=""/>
+						<outline text="if (ch === &quot;&#xAB;&quot;) { //left chevron, comment to matching right chevron or end of line">
+							<outline text="const ixEnd = theText.indexOf (&quot;&#xBB;&quot;, ix); //right chevron"/>
+							<outline text="if (ixEnd === -1) {">
+								<outline text="break;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="ix = ixEnd + 1;"/>
+							<outline text="continue;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text=""/>
+						<outline text="if ((ch === &quot;/&quot;) &amp;&amp; (theText.charAt (ix + 1) === &quot;/&quot;)) { //line comment, rest of line">
+							<outline text="break;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text=""/>
+						<outline text="if ((ch === &quot;\&quot;&quot;) || (ch === &quot;'&quot;)) {">
+							<outline text="var literal = &quot;&quot;;"/>
+							<outline text="ix++;"/>
+							<outline text="while (ix &lt; theText.length) {">
+								<outline text="const chString = theText.charAt (ix);"/>
+								<outline text="if (chString === ch) {">
+									<outline text="break;"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="if (chString === &quot;\\&quot;) {">
+									<outline text="ix++;"/>
+									<outline text="const chEscaped = theText.charAt (ix);"/>
+									<outline text="switch (chEscaped) {">
+										<outline text="case &quot;n&quot;:">
+											<outline text="literal += &quot;\n&quot;;"/>
+											<outline text="break;"/>
+											</outline>
+										<outline text="case &quot;r&quot;:">
+											<outline text="literal += &quot;\r&quot;;"/>
+											<outline text="break;"/>
+											</outline>
+										<outline text="case &quot;t&quot;:">
+											<outline text="literal += &quot;\t&quot;;"/>
+											<outline text="break;"/>
+											</outline>
+										<outline text="default:">
+											<outline text="literal += chEscaped;"/>
+											<outline text="break;"/>
+											</outline>
+										<outline text="}"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="else {">
+									<outline text="literal += chString;"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="ix++;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="if (ix &gt;= theText.length) {">
+								<outline text="error (&quot;a string that starts with &quot; + ch + &quot; never closes.&quot;);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="ix++;"/>
+							<outline text="tokens.push ({type: &quot;string&quot;, value: literal});"/>
+							<outline text="continue;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text=""/>
+						<outline text="if ((ch &gt;= &quot;0&quot;) &amp;&amp; (ch &lt;= &quot;9&quot;)) {">
+							<outline text="var number = &quot;&quot;;"/>
+							<outline text="while ((ix &lt; theText.length) &amp;&amp; (/[0-9.xXa-fA-F]/.test (theText.charAt (ix)))) {">
+								<outline text="if ((theText.charAt (ix) === &quot;.&quot;) &amp;&amp; !(/[0-9]/.test (theText.charAt (ix + 1)))) {">
+									<outline text="break; //a dot not followed by a digit belongs to a path, not this number"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="number += theText.charAt (ix);"/>
+								<outline text="ix++;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="tokens.push ({type: &quot;number&quot;, value: Number (number)});"/>
+							<outline text="continue;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text=""/>
+						<outline text="if (/[A-Za-z_]/.test (ch)) {">
+							<outline text="var word = &quot;&quot;;"/>
+							<outline text="while ((ix &lt; theText.length) &amp;&amp; (/[A-Za-z0-9_]/.test (theText.charAt (ix)))) {">
+								<outline text="word += theText.charAt (ix);"/>
+								<outline text="ix++;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="const lower = word.toLowerCase ();"/>
+							<outline text="if (keywords.indexOf (lower) !== -1) {">
+								<outline text="tokens.push ({type: lower, word});"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="else {">
+								<outline text="if (lower === &quot;true&quot;) {">
+									<outline text="tokens.push ({type: &quot;boolean&quot;, value: true});"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="else {">
+									<outline text="if (lower === &quot;false&quot;) {">
+										<outline text="tokens.push ({type: &quot;boolean&quot;, value: false});"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="else {">
+										<outline text="if (lower === &quot;infinity&quot;) {">
+											<outline text="tokens.push ({type: &quot;number&quot;, value: Infinity});"/>
+											<outline text="}"/>
+											</outline>
+										<outline text="else {">
+											<outline text="tokens.push ({type: &quot;id&quot;, name: word});"/>
+											<outline text="}"/>
+											</outline>
+										<outline text="}"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="}"/>
+								</outline>
+							<outline text="continue;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text=""/>
+						<outline text="function take (theOperator, theType) {">
+							<outline text="if (theText.slice (ix, ix + theOperator.length) === theOperator) {">
+								<outline text="tokens.push ({type: theType});"/>
+								<outline text="ix += theOperator.length;"/>
+								<outline text="return (true);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="return (false);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text=""/>
+						<outline text="if (take (&quot;==&quot;, &quot;eq&quot;) || take (&quot;!=&quot;, &quot;ne&quot;) || take (&quot;&lt;=&quot;, &quot;le&quot;) || take (&quot;&gt;=&quot;, &quot;ge&quot;) ||">
+							<outline text="take (&quot;&amp;&amp;&quot;, &quot;and&quot;) || take (&quot;||&quot;, &quot;or&quot;) || take (&quot;++&quot;, &quot;plusplus&quot;) || take (&quot;--&quot;, &quot;minusminus&quot;) ||"/>
+							<outline text="take (&quot;&#x2260;&quot;, &quot;ne&quot;) || take (&quot;&#x2264;&quot;, &quot;le&quot;) || take (&quot;&#x2265;&quot;, &quot;ge&quot;) || //not-equal, less-or-equal, greater-or-equal signs"/>
+							<outline text="take (&quot;=&quot;, &quot;assign&quot;) || take (&quot;&lt;&quot;, &quot;lt&quot;) || take (&quot;&gt;&quot;, &quot;gt&quot;) ||"/>
+							<outline text="take (&quot;+&quot;, &quot;add&quot;) || take (&quot;-&quot;, &quot;subtract&quot;) || take (&quot;*&quot;, &quot;multiply&quot;) ||"/>
+							<outline text="take (&quot;/&quot;, &quot;divide&quot;) || take (&quot;%&quot;, &quot;mod&quot;) || take (&quot;!&quot;, &quot;not&quot;) ||"/>
+							<outline text="take (&quot;@&quot;, &quot;at&quot;) || take (&quot;^&quot;, &quot;deref&quot;) || take (&quot;.&quot;, &quot;dot&quot;) ||"/>
+							<outline text="take (&quot;,&quot;, &quot;comma&quot;) || take (&quot;(&quot;, &quot;lparen&quot;) || take (&quot;)&quot;, &quot;rparen&quot;) ||"/>
+							<outline text="take (&quot;[&quot;, &quot;lbracket&quot;) || take (&quot;]&quot;, &quot;rbracket&quot;) ||"/>
+							<outline text="take (&quot;{&quot;, &quot;lbrace&quot;) || take (&quot;}&quot;, &quot;rbrace&quot;) || take (&quot;;&quot;, &quot;semicolon&quot;) ||"/>
+							<outline text="take (&quot;:&quot;, &quot;colon&quot;)) {"/>
+							<outline text="continue;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text=""/>
+						<outline text="error (&quot;the character \&quot;&quot; + ch + &quot;\&quot; isn't part of the language.&quot;);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="tokens.push ({type: &quot;eol&quot;});"/>
+					<outline text="return (tokens);"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="function parseLine (theText) {">
+					<outline text=""/>
+					<outline text="/*  Parse one line into a statement node. Block statements get their">
+						<outline text="bodies attached later, from the outline structure.  */"/>
+						</outline>
+					<outline text=""/>
+					<outline text="const tokens = tokenize (theText);"/>
+					<outline text="var ixToken = 0;"/>
+					<outline text=""/>
+					<outline text="function peek () {">
+						<outline text="return (tokens [ixToken]);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function next () {">
+						<outline text="const token = tokens [ixToken];"/>
+						<outline text="ixToken++;"/>
+						<outline text="return (token);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function expect (theType, theContext) {">
+						<outline text="const token = next ();"/>
+						<outline text="if (token.type !== theType) {">
+							<outline text="throw new Error (&quot;Can't parse the line because &quot; + theContext + &quot; expected &quot; + theType + &quot; but got &quot; + token.type + &quot;.&quot;);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="return (token);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function flAtEnd () {">
+						<outline text="return (peek ().type === &quot;eol&quot;);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="//expressions, precedence climbing per the yacc declarations"/>
+					<outline text=""/>
+					<outline text="function parsePrimary () {">
+						<outline text=""/>
+						<outline text="const token = next ();"/>
+						<outline text=""/>
+						<outline text="switch (token.type) {">
+							<outline text="case &quot;string&quot;:">
+								<outline text="return ({op: &quot;const&quot;, value: token.value});"/>
+								</outline>
+							<outline text="case &quot;number&quot;:">
+								<outline text="return ({op: &quot;const&quot;, value: token.value});"/>
+								</outline>
+							<outline text="case &quot;boolean&quot;:">
+								<outline text="return ({op: &quot;const&quot;, value: token.value});"/>
+								</outline>
+							<outline text="case &quot;id&quot;:">
+								<outline text="return ({op: &quot;id&quot;, name: token.name});"/>
+								</outline>
+							<outline text="case &quot;lparen&quot;: {">
+								<outline text="const inner = parseExpr ();"/>
+								<outline text="expect (&quot;rparen&quot;, &quot;a parenthesized expression&quot;);"/>
+								<outline text="return (inner);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="case &quot;lbracket&quot;: { //a computed identifier: [server].mail.send, @[path + name]">
+								<outline text="const nameExpr = parseExpr ();"/>
+								<outline text="expect (&quot;rbracket&quot;, &quot;a computed identifier&quot;);"/>
+								<outline text="return ({op: &quot;computedid&quot;, expr: nameExpr});"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="case &quot;lbrace&quot;: { //a list literal">
+								<outline text="const items = [];"/>
+								<outline text="if (peek ().type !== &quot;rbrace&quot;) {">
+									<outline text="items.push (parseExpr ());"/>
+									<outline text="while (peek ().type === &quot;comma&quot;) {">
+										<outline text="next ();"/>
+										<outline text="items.push (parseExpr ());"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="expect (&quot;rbrace&quot;, &quot;a list literal&quot;);"/>
+								<outline text="return ({op: &quot;list&quot;, items});"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="case &quot;at&quot;:">
+								<outline text="return ({op: &quot;address&quot;, expr: parseUnary ()});"/>
+								</outline>
+							<outline text="case &quot;not&quot;:">
+								<outline text="return ({op: &quot;not&quot;, expr: parseUnary ()});"/>
+								</outline>
+							<outline text="case &quot;subtract&quot;:">
+								<outline text="return ({op: &quot;negate&quot;, expr: parseUnary ()});"/>
+								</outline>
+							<outline text="case &quot;plusplus&quot;:">
+								<outline text="return ({op: &quot;preincrement&quot;, expr: parseUnary ()});"/>
+								</outline>
+							<outline text="case &quot;minusminus&quot;:">
+								<outline text="return ({op: &quot;predecrement&quot;, expr: parseUnary ()});"/>
+								</outline>
+							<outline text="default:">
+								<outline text="throw new Error (&quot;Can't parse the line because an expression can't start with &quot; + token.type + &quot;.&quot;);"/>
+								</outline>
+							<outline text="}"/>
+							</outline>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function parsePostfix () {">
+						<outline text="var node = parsePrimary ();"/>
+						<outline text="while (true) {">
+							<outline text="const token = peek ();"/>
+							<outline text="if (token.type === &quot;dot&quot;) {">
+								<outline text="next ();"/>
+								<outline text="if (peek ().type === &quot;lbracket&quot;) { //computed member: adrtable^.[fname]">
+									<outline text="next ();"/>
+									<outline text="const memberExpr = parseExpr ();"/>
+									<outline text="expect (&quot;rbracket&quot;, &quot;a computed member&quot;);"/>
+									<outline text="node = {op: &quot;index&quot;, left: node, index: memberExpr};"/>
+									<outline text="continue;"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="const idToken = next ();"/>
+								<outline text="if ((idToken.type !== &quot;id&quot;) &amp;&amp; (keywords.indexOf (idToken.type) === -1)) {">
+									<outline text="throw new Error (&quot;Can't parse the line because a dot must be followed by a name, not &quot; + idToken.type + &quot;.&quot;);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="var name = idToken.name;"/>
+								<outline text="if (name === undefined) {">
+									<outline text="name = idToken.word; //a keyword used as a table entry name, legal after a dot"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="node = {op: &quot;dot&quot;, left: node, name};"/>
+								<outline text="continue;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="if (token.type === &quot;lbracket&quot;) {">
+								<outline text="next ();"/>
+								<outline text="const index = parseExpr ();"/>
+								<outline text="expect (&quot;rbracket&quot;, &quot;a subscript&quot;);"/>
+								<outline text="node = {op: &quot;index&quot;, left: node, index};"/>
+								<outline text="continue;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="if (token.type === &quot;lparen&quot;) {">
+								<outline text="next ();"/>
+								<outline text="const args = [];"/>
+								<outline text="if (peek ().type !== &quot;rparen&quot;) {">
+									<outline text="args.push (parseCallArg ());"/>
+									<outline text="while (peek ().type === &quot;comma&quot;) {">
+										<outline text="next ();"/>
+										<outline text="args.push (parseCallArg ());"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="expect (&quot;rparen&quot;, &quot;a call's arguments&quot;);"/>
+								<outline text="node = {op: &quot;call&quot;, fn: node, args};"/>
+								<outline text="continue;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="if (token.type === &quot;deref&quot;) {">
+								<outline text="next ();"/>
+								<outline text="node = {op: &quot;deref&quot;, expr: node};"/>
+								<outline text="continue;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="if (token.type === &quot;plusplus&quot;) {">
+								<outline text="next ();"/>
+								<outline text="node = {op: &quot;postincrement&quot;, expr: node};"/>
+								<outline text="continue;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="if (token.type === &quot;minusminus&quot;) {">
+								<outline text="next ();"/>
+								<outline text="node = {op: &quot;postdecrement&quot;, expr: node};"/>
+								<outline text="continue;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="break;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="return (node);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function parseCallArg () { //an argument may be named: flatfilenames: true">
+						<outline text="if ((peek ().type === &quot;id&quot;) &amp;&amp; (tokens [ixToken + 1] !== undefined) &amp;&amp; (tokens [ixToken + 1].type === &quot;colon&quot;)) {">
+							<outline text="const nameToken = next ();"/>
+							<outline text="next ();"/>
+							<outline text="return ({op: &quot;namedarg&quot;, name: nameToken.name, value: parseExpr ()});"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="return (parseExpr ());"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function parseUnary () {">
+						<outline text="return (parsePostfix ());"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="const binaryLevels = [ //loosest first; assign handled at statement level">
+						<outline text="[&quot;or&quot;],"/>
+						<outline text="[&quot;and&quot;],"/>
+						<outline text="[&quot;eq&quot;, &quot;ne&quot;],"/>
+						<outline text="[&quot;lt&quot;, &quot;gt&quot;, &quot;le&quot;, &quot;ge&quot;, &quot;beginswith&quot;, &quot;endswith&quot;, &quot;contains&quot;],"/>
+						<outline text="[&quot;add&quot;, &quot;subtract&quot;],"/>
+						<outline text="[&quot;multiply&quot;, &quot;divide&quot;, &quot;mod&quot;]"/>
+						<outline text="];"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function parseBinary (level) {">
+						<outline text="if (level &gt;= binaryLevels.length) {">
+							<outline text="return (parseUnary ());"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="var node = parseBinary (level + 1);"/>
+						<outline text="while (binaryLevels [level].indexOf (peek ().type) !== -1) {">
+							<outline text="const operator = next ().type;"/>
+							<outline text="const right = parseBinary (level + 1);"/>
+							<outline text="node = {op: operator, left: node, right};"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="return (node);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function parseExpr () {">
+						<outline text="return (parseBinary (0));"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function parseNameList () { //for local (...) and handler parameters: name, or name = default">
+						<outline text="const inits = [];"/>
+						<outline text="if ((peek ().type !== &quot;rparen&quot;) &amp;&amp; (peek ().type !== &quot;rbrace&quot;)) {">
+							<outline text="while (true) {">
+								<outline text="const nameToken = expect (&quot;id&quot;, &quot;a name list&quot;);"/>
+								<outline text="var value;"/>
+								<outline text="if (peek ().type === &quot;assign&quot;) {">
+									<outline text="next ();"/>
+									<outline text="value = parseExpr ();"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="inits.push ({name: nameToken.name, value});"/>
+								<outline text="if (peek ().type === &quot;comma&quot;) {">
+									<outline text="next ();"/>
+									<outline text="continue;"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="break;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="}"/>
+							</outline>
+						<outline text="return (inits);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function parseSimpleStatement () { //an expression or an assignment, no keyword forms">
+						<outline text="const expr = parseExpr ();"/>
+						<outline text="if (peek ().type === &quot;assign&quot;) {">
+							<outline text="next ();"/>
+							<outline text="const value = parseExpr ();"/>
+							<outline text="return ({op: &quot;assign&quot;, target: expr, value});"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="return ({op: &quot;expression&quot;, expr});"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function parseStatement () {">
+						<outline text=""/>
+						<outline text="const token = peek ();"/>
+						<outline text=""/>
+						<outline text="switch (token.type) {">
+							<outline text=""/>
+							<outline text="case &quot;eol&quot;:">
+								<outline text="return ({op: &quot;noop&quot;});"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;on&quot;: {">
+								<outline text="next ();"/>
+								<outline text="const nameToken = expect (&quot;id&quot;, &quot;a handler definition&quot;);"/>
+								<outline text="expect (&quot;lparen&quot;, &quot;a handler definition&quot;);"/>
+								<outline text="const params = parseNameList ();"/>
+								<outline text="expect (&quot;rparen&quot;, &quot;a handler definition&quot;);"/>
+								<outline text="return ({op: &quot;handler&quot;, name: nameToken.name, params, body: []});"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;local&quot;: case &quot;global&quot;: {">
+								<outline text="const which = next ().type;"/>
+								<outline text="var inits = [];"/>
+								<outline text="if (peek ().type === &quot;lparen&quot;) {">
+									<outline text="next ();"/>
+									<outline text="inits = parseNameList ();"/>
+									<outline text="expect (&quot;rparen&quot;, &quot;a &quot; + which + &quot; declaration&quot;);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="else {">
+									<outline text="if (peek ().type === &quot;lbrace&quot;) {">
+										<outline text="next ();"/>
+										<outline text="inits = parseNameList ();"/>
+										<outline text="expect (&quot;rbrace&quot;, &quot;a &quot; + which + &quot; declaration&quot;);"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="else {">
+										<outline text="inits = parseNameList (); //bare form: local name = value"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="return ({op: which, inits});"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;if&quot;: {">
+								<outline text="next ();"/>
+								<outline text="const test = parseExpr ();"/>
+								<outline text="return ({op: &quot;if&quot;, test, body: [], elseBody: undefined});"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;else&quot;:">
+								<outline text="next ();"/>
+								<outline text="if (peek ().type === &quot;if&quot;) { //else if, cascaded">
+									<outline text="const nested = parseStatement ();"/>
+									<outline text="return ({op: &quot;else&quot;, nestedIf: nested, body: []});"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="return ({op: &quot;else&quot;, body: []});"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;loop&quot;: {">
+								<outline text="next ();"/>
+								<outline text="if (peek ().type === &quot;lparen&quot;) {">
+									<outline text="next ();"/>
+									<outline text="const first = parseSimpleStatement ();"/>
+									<outline text="if (peek ().type === &quot;semicolon&quot;) { //loop (init; test; step)">
+										<outline text="next ();"/>
+										<outline text="const test = parseExpr ();"/>
+										<outline text="expect (&quot;semicolon&quot;, &quot;a three-part loop header&quot;);"/>
+										<outline text="const step = parseSimpleStatement ();"/>
+										<outline text="expect (&quot;rparen&quot;, &quot;a three-part loop header&quot;);"/>
+										<outline text="return ({op: &quot;loop3&quot;, init: first, test, step, body: []});"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="expect (&quot;rparen&quot;, &quot;a loop header&quot;);"/>
+									<outline text="if (first.op !== &quot;expression&quot;) {">
+										<outline text="throw new Error (&quot;Can't parse the line because a counted loop header needs an expression.&quot;);"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="return ({op: &quot;loop&quot;, count: first.expr, body: []});"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="return ({op: &quot;loop&quot;, body: []});"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;while&quot;: {">
+								<outline text="next ();"/>
+								<outline text="const test = parseExpr ();"/>
+								<outline text="return ({op: &quot;while&quot;, test, body: []});"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;fileloop&quot;: {">
+								<outline text="next ();"/>
+								<outline text="expect (&quot;lparen&quot;, &quot;a fileloop header&quot;);"/>
+								<outline text="const nameToken = expect (&quot;id&quot;, &quot;a fileloop header&quot;);"/>
+								<outline text="expect (&quot;in&quot;, &quot;a fileloop header&quot;);"/>
+								<outline text="const folder = parseExpr ();"/>
+								<outline text="var depth;"/>
+								<outline text="if (peek ().type === &quot;comma&quot;) {">
+									<outline text="next ();"/>
+									<outline text="depth = parseExpr ();"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="expect (&quot;rparen&quot;, &quot;a fileloop header&quot;);"/>
+								<outline text="return ({op: &quot;fileloop&quot;, name: nameToken.name, folder, depth, body: []});"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;for&quot;: {">
+								<outline text="next ();"/>
+								<outline text="var flParen = false;"/>
+								<outline text="if (peek ().type === &quot;lparen&quot;) { //optional parens: for (x in y)">
+									<outline text="next ();"/>
+									<outline text="flParen = true;"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="const nameToken = expect (&quot;id&quot;, &quot;a for header&quot;);"/>
+								<outline text="if (peek ().type === &quot;in&quot;) {">
+									<outline text="next ();"/>
+									<outline text="const list = parseExpr ();"/>
+									<outline text="if (flParen) {">
+										<outline text="expect (&quot;rparen&quot;, &quot;a for header&quot;);"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="return ({op: &quot;forin&quot;, name: nameToken.name, list, body: []});"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="expect (&quot;assign&quot;, &quot;a for header&quot;);"/>
+								<outline text="const from = parseExpr ();"/>
+								<outline text="const directionToken = next ();"/>
+								<outline text="if ((directionToken.type !== &quot;to&quot;) &amp;&amp; (directionToken.type !== &quot;downto&quot;)) {">
+									<outline text="throw new Error (&quot;Can't parse the line because a for header expected to or downto, not &quot; + directionToken.type + &quot;.&quot;);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="const limit = parseExpr ();"/>
+								<outline text="if (flParen) {">
+									<outline text="expect (&quot;rparen&quot;, &quot;a for header&quot;);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="return ({op: &quot;for&quot;, name: nameToken.name, from, limit, flDown: directionToken.type === &quot;downto&quot;, body: []});"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;bundle&quot;:">
+								<outline text="next ();"/>
+								<outline text="return ({op: &quot;bundle&quot;, body: []});"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;with&quot;: {">
+								<outline text="next ();"/>
+								<outline text="const path = parseExpr ();"/>
+								<outline text="return ({op: &quot;with&quot;, path, body: []});"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;try&quot;:">
+								<outline text="next ();"/>
+								<outline text="if (peek ().type === &quot;lbrace&quot;) { //inline form: try {statement}">
+									<outline text="next ();"/>
+									<outline text="const inner = parseSimpleStatement ();"/>
+									<outline text="expect (&quot;rbrace&quot;, &quot;an inline try&quot;);"/>
+									<outline text="return ({op: &quot;try&quot;, body: [inner], elseBody: undefined});"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="return ({op: &quot;try&quot;, body: [], elseBody: undefined});"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;case&quot;: {">
+								<outline text="next ();"/>
+								<outline text="const value = parseExpr ();"/>
+								<outline text="return ({op: &quot;case&quot;, value, body: []});"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;break&quot;:">
+								<outline text="next ();"/>
+								<outline text="if (peek ().type === &quot;lparen&quot;) {">
+									<outline text="next ();"/>
+									<outline text="expect (&quot;rparen&quot;, &quot;a break statement&quot;);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="return ({op: &quot;break&quot;});"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;continue&quot;:">
+								<outline text="next ();"/>
+								<outline text="return ({op: &quot;continue&quot;});"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;return&quot;: {">
+								<outline text="next ();"/>
+								<outline text="var value;"/>
+								<outline text="if (!flAtEnd () &amp;&amp; (peek ().type !== &quot;semicolon&quot;)) {">
+									<outline text="value = parseExpr ();"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="return ({op: &quot;return&quot;, value});"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="default: {">
+								<outline text="const expr = parseExpr ();"/>
+								<outline text="if (peek ().type === &quot;assign&quot;) {">
+									<outline text="next ();"/>
+									<outline text="const value = parseExpr ();"/>
+									<outline text="return ({op: &quot;assign&quot;, target: expr, value});"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="return ({op: &quot;expression&quot;, expr});"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="}"/>
+							</outline>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="const statements = [];"/>
+					<outline text="statements.push (parseStatement ());"/>
+					<outline text="while (peek ().type === &quot;semicolon&quot;) { //semicolons separate statements on one line, and trail legally">
+						<outline text="next ();"/>
+						<outline text="if (!flAtEnd ()) {">
+							<outline text="statements.push (parseStatement ());"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="}"/>
+						</outline>
+					<outline text="if (!flAtEnd ()) {">
+						<outline text="throw new Error (&quot;Can't parse the line because there are extra tokens after the statement, starting with &quot; + peek ().type + &quot;.&quot;);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text="if (statements.length === 1) {">
+						<outline text="return (statements [0]);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text="return ({op: &quot;sequence&quot;, statements});"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="const blockOps = [&quot;handler&quot;, &quot;if&quot;, &quot;else&quot;, &quot;loop&quot;, &quot;while&quot;, &quot;fileloop&quot;, &quot;for&quot;, &quot;forin&quot;, &quot;bundle&quot;, &quot;with&quot;, &quot;try&quot;, &quot;case&quot;];"/>
+				<outline text=""/>
+				<outline text="function parseOutline (theNodes) {">
+					<outline text=""/>
+					<outline text="/*  theNodes is an array of {text, subs} outline nodes. Returns an">
+						<outline text="array of statements, children attached as bodies, else-lines"/>
+						<outline text="joined to their if or try.  */"/>
+						</outline>
+					<outline text=""/>
+					<outline text="const statements = [];"/>
+					<outline text=""/>
+					<outline text="theNodes.forEach (function (node) {">
+						<outline text=""/>
+						<outline text="if ((node.text.trim ().length === 0) &amp;&amp; (node.subs.length &gt; 0)) { //a blank organizer line -- its children run at this level">
+							<outline text="parseOutline (node.subs).forEach (function (child) {">
+								<outline text="statements.push (child);"/>
+								<outline text="});"/>
+								</outline>
+							<outline text="return;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text=""/>
+						<outline text="const statement = parseLine (node.text);"/>
+						<outline text=""/>
+						<outline text="if (statement.op === &quot;case&quot;) { //children are clauses: a value line whose children are its body, or an else line">
+							<outline text="statement.clauses = [];"/>
+							<outline text="node.subs.forEach (function (clauseNode) {">
+								<outline text="const clauseLine = parseLine (clauseNode.text);"/>
+								<outline text="if (clauseLine.op === &quot;else&quot;) {">
+									<outline text="statement.elseBody = parseOutline (clauseNode.subs);"/>
+									<outline text="return;"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="if (clauseLine.op !== &quot;expression&quot;) {">
+									<outline text="throw new Error (&quot;Can't parse the outline because the case clause \&quot;&quot; + clauseNode.text + &quot;\&quot; isn't a value.&quot;);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="statement.clauses.push ({value: clauseLine.expr, body: parseOutline (clauseNode.subs)});"/>
+								<outline text="});"/>
+								</outline>
+							<outline text="statements.push (statement);"/>
+							<outline text="return;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text=""/>
+						<outline text="if (node.subs.length &gt; 0) {">
+							<outline text="if (blockOps.indexOf (statement.op) === -1) {">
+								<outline text="/*  a plain line with children -- Frontier treats subordinate">
+									<outline text="lines of a non-block statement as part of no block; in"/>
+									<outline text="Dave's corpus this shape is a continuation comment holder,"/>
+									<outline text="so children must be empty of code. Refuse loudly.  */"/>
+									</outline>
+								<outline text="throw new Error (&quot;Can't parse the outline because the line \&quot;&quot; + node.text + &quot;\&quot; isn't a block header but has sublines.&quot;);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="if ((statement.op === &quot;else&quot;) &amp;&amp; (statement.nestedIf !== undefined)) {">
+								<outline text="statement.nestedIf.body = parseOutline (node.subs);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="else {">
+								<outline text="statement.body = parseOutline (node.subs);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="}"/>
+							</outline>
+						<outline text=""/>
+						<outline text="if ((statement.op === &quot;else&quot;) &amp;&amp; (statements.length &gt; 0)) {">
+							<outline text="const previous = statements [statements.length - 1];"/>
+							<outline text="if ((previous.op === &quot;if&quot;) || (previous.op === &quot;try&quot;) || (previous.op === &quot;case&quot;)) {">
+								<outline text="if (statement.nestedIf !== undefined) {">
+									<outline text="previous.elseBody = [statement.nestedIf];"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="else {">
+									<outline text="previous.elseBody = statement.body;"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="return;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="throw new Error (&quot;Can't parse the outline because an else line doesn't follow an if, try or case.&quot;);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text=""/>
+						<outline text="statements.push (statement);"/>
+						<outline text="});"/>
+						</outline>
+					<outline text=""/>
+					<outline text="return (statements);"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="function linesToTree (theLines) { //flat {level, text, flComment} lines to {text, subs}, comment subtrees excluded">
+					<outline text="const root = {text: &quot;&quot;, subs: []};"/>
+					<outline text="const stack = [root];"/>
+					<outline text="var depthSkip = -1;"/>
+					<outline text="theLines.forEach (function (line) {">
+						<outline text="if ((depthSkip &gt;= 0) &amp;&amp; (line.level &gt; depthSkip)) {">
+							<outline text="return;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="depthSkip = -1;"/>
+						<outline text="if (line.flComment) {">
+							<outline text="depthSkip = line.level;"/>
+							<outline text="return;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="const node = {text: line.text, subs: []};"/>
+						<outline text="stack [line.level].subs.push (node);"/>
+						<outline text="stack [line.level + 1] = node;"/>
+						<outline text="stack.length = line.level + 2;"/>
+						<outline text="});"/>
+						</outline>
+					<outline text="return (root.subs);"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="exports.parseLine = parseLine;"/>
+				<outline text="exports.parseOutline = parseOutline;"/>
+				<outline text="exports.tokenize = tokenize;"/>
+				<outline text="exports.linesToTree = linesToTree;"/>
+				</outline>
+			<outline text="code/evaluate.js">
+				<outline text="/*  Evaluate a UserTalk AST from parse.js. Semantics from the kernel's">
+					<outline text="langevaluate.c: an object-database tree is the global namespace,"/>
+					<outline text="locals live in frames, handlers close over their defining frames,"/>
+					<outline text="identifier lookup is case-insensitive everywhere."/>
+					<outline text=""/>
+					<outline text="by CC, 7/27/26 */"/>
+					</outline>
+				<outline text=""/>
+				<outline text="function makeEnvironment (theOdb, theVerbs, theTrace) {">
+					<outline text=""/>
+					<outline text="const environment = {">
+						<outline text="odb: theOdb, //a plain object tree standing in for the ODB"/>
+						<outline text="verbs: theVerbs, //lowercase dotted verb name -&gt; function (args, environment)"/>
+						<outline text="trace: theTrace, //every verb call gets logged here"/>
+						<outline text="frames: [], //the local-variable stack; each frame is {vars: {}}"/>
+						<outline text="withPaths: [] //active with-statement prefixes, innermost last"/>
+						<outline text="};"/>
+						</outline>
+					<outline text="installConstants (theOdb);"/>
+					<outline text="return (environment);"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="const languageConstants = { //type names match what the typeof verb returns, so case statements compare true">
+					<outline text="nil: undefined, &quot;this&quot;: undefined,"/>
+					<outline text="tabletype: &quot;tabletype&quot;, outlinetype: &quot;outlinetype&quot;, scripttype: &quot;scripttype&quot;,"/>
+					<outline text="wptexttype: &quot;wptexttype&quot;, binarytype: &quot;binarytype&quot;, stringtype: &quot;stringtype&quot;,"/>
+					<outline text="booleantype: &quot;booleantype&quot;, datetype: &quot;datetype&quot;, numbertype: &quot;numbertype&quot;,"/>
+					<outline text="longtype: &quot;numbertype&quot;, inttype: &quot;numbertype&quot;, doubletype: &quot;numbertype&quot;,"/>
+					<outline text="listtype: &quot;listtype&quot;, recordtype: &quot;recordtype&quot;, addresstype: &quot;addresstype&quot;,"/>
+					<outline text="unknowntype: &quot;unknowntype&quot;,"/>
+					<outline text="up: &quot;up&quot;, down: &quot;down&quot;, left: &quot;left&quot;, right: &quot;right&quot;,"/>
+					<outline text="flatup: &quot;flatup&quot;, flatdown: &quot;flatdown&quot;,"/>
+					<outline text="pageup: &quot;pageup&quot;, pagedown: &quot;pagedown&quot;, firstlist: &quot;firstlist&quot;, lastlist: &quot;lastlist&quot;"/>
+					<outline text="};"/>
+					</outline>
+				<outline text=""/>
+				<outline text="function installConstants (theOdb) {">
+					<outline text="Object.keys (languageConstants).forEach (function (name) {">
+						<outline text="if (findKey (theOdb, name) === undefined) {">
+							<outline text="theOdb [name] = languageConstants [name];"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="});"/>
+						</outline>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="function findKey (theTable, theName) { //case-insensitive key lookup, returns the real key or undefined">
+					<outline text="if (theTable [theName] !== undefined) {">
+						<outline text="return (theName);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text="const lower = theName.toLowerCase ();"/>
+					<outline text="var found;"/>
+					<outline text="Object.keys (theTable).forEach (function (key) {">
+						<outline text="if ((found === undefined) &amp;&amp; (key.toLowerCase () === lower)) {">
+							<outline text="found = key;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="});"/>
+						</outline>
+					<outline text="return (found);"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="//control-flow signals travel as exceptions"/>
+				<outline text=""/>
+				<outline text="function BreakSignal () {">
+					<outline text="this.flBreakSignal = true;"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="function ContinueSignal () {">
+					<outline text="this.flContinueSignal = true;"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="function ReturnSignal (theValue) {">
+					<outline text="this.flReturnSignal = true;"/>
+					<outline text="this.value = theValue;"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="function evaluate (theStatements, environment) {">
+					<outline text=""/>
+					<outline text="/*  Run a statement list. Returns the value of the last expression">
+						<outline text="statement, the way Frontier scripts return their last value.  */"/>
+						</outline>
+					<outline text=""/>
+					<outline text="var lastValue;"/>
+					<outline text=""/>
+					<outline text="//references: a {get, set} pair for anything assignable"/>
+					<outline text=""/>
+					<outline text="function referenceForId (theName) {">
+						<outline text=""/>
+						<outline text="var ixFrame;"/>
+						<outline text="for (ixFrame = environment.frames.length - 1; ixFrame &gt;= 0; ixFrame--) {">
+							<outline text="const vars = environment.frames [ixFrame].vars;"/>
+							<outline text="const key = findKey (vars, theName);"/>
+							<outline text="if (key !== undefined) {">
+								<outline text="return ({">
+									<outline text="get: function () {">
+										<outline text="return (vars [key]);"/>
+										<outline text="},"/>
+										</outline>
+									<outline text="set: function (theValue) {">
+										<outline text="vars [key] = theValue;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="});"/>
+									</outline>
+								<outline text="}"/>
+								</outline>
+							<outline text="}"/>
+							</outline>
+						<outline text=""/>
+						<outline text="var ixWith;"/>
+						<outline text="for (ixWith = environment.withPaths.length - 1; ixWith &gt;= 0; ixWith--) {">
+							<outline text="const withTable = environment.withPaths [ixWith];"/>
+							<outline text="const key = findKey (withTable, theName);"/>
+							<outline text="if (key !== undefined) {">
+								<outline text="return ({">
+									<outline text="get: function () {">
+										<outline text="return (withTable [key]);"/>
+										<outline text="},"/>
+										</outline>
+									<outline text="set: function (theValue) {">
+										<outline text="withTable [key] = theValue;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="});"/>
+									</outline>
+								<outline text="}"/>
+								</outline>
+							<outline text="}"/>
+							</outline>
+						<outline text=""/>
+						<outline text="const odbKey = findKey (environment.odb, theName);"/>
+						<outline text="if (odbKey !== undefined) {">
+							<outline text="return ({">
+								<outline text="get: function () {">
+									<outline text="return (environment.odb [odbKey]);"/>
+									<outline text="},"/>
+									</outline>
+								<outline text="set: function (theValue) {">
+									<outline text="environment.odb [odbKey] = theValue;"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="});"/>
+								</outline>
+							<outline text="}"/>
+							</outline>
+						<outline text=""/>
+						<outline text="return (undefined);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function referenceForNode (theNode) {">
+						<outline text=""/>
+						<outline text="switch (theNode.op) {">
+							<outline text=""/>
+							<outline text="case &quot;id&quot;: {">
+								<outline text="const existing = referenceForId (theNode.name);"/>
+								<outline text="if (existing !== undefined) {">
+									<outline text="return (existing);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="//an unknown name assigns into the odb root, the way Frontier creates entries"/>
+								<outline text="return ({">
+									<outline text="get: function () {">
+										<outline text="const message = &quot;Can't get the value of &quot; + theNode.name + &quot; because there is no object with that name.&quot;;"/>
+										<outline text="throw new Error (message);"/>
+										<outline text="},"/>
+										</outline>
+									<outline text="set: function (theValue) {">
+										<outline text="environment.odb [theNode.name] = theValue;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="});"/>
+									</outline>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;computedid&quot;: {">
+								<outline text="const name = evalExpr (theNode.expr);"/>
+								<outline text="return (referenceForNode ({op: &quot;id&quot;, name: String (name)}));"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;dot&quot;: {">
+								<outline text="const container = evalExpr (theNode.left);"/>
+								<outline text="if ((container === undefined) || (container === null) || (typeof container !== &quot;object&quot;)) {">
+									<outline text="const message = &quot;Can't access &quot; + theNode.name + &quot; because the value before the dot isn't a table.&quot;;"/>
+									<outline text="throw new Error (message);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="var key = findKey (container, theNode.name);"/>
+								<outline text="if (key === undefined) {">
+									<outline text="key = theNode.name;"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="const keyFinal = key;"/>
+								<outline text="return ({">
+									<outline text="get: function () {">
+										<outline text="return (container [keyFinal]);"/>
+										<outline text="},"/>
+										</outline>
+									<outline text="set: function (theValue) {">
+										<outline text="container [keyFinal] = theValue;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="});"/>
+									</outline>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;index&quot;: {">
+								<outline text="const container = evalExpr (theNode.left);"/>
+								<outline text="const index = evalExpr (theNode.index);"/>
+								<outline text="if (Array.isArray (container)) {">
+									<outline text="return ({">
+										<outline text="get: function () {">
+											<outline text="return (container [index - 1]); //Frontier lists are 1-based"/>
+											<outline text="},"/>
+											</outline>
+										<outline text="set: function (theValue) {">
+											<outline text="container [index - 1] = theValue;"/>
+											<outline text="}"/>
+											</outline>
+										<outline text="});"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="if ((container !== undefined) &amp;&amp; (typeof container === &quot;object&quot;)) {">
+									<outline text="if (typeof index === &quot;number&quot;) { //numeric index into a table: nth entry">
+										<outline text="const keys = Object.keys (container);"/>
+										<outline text="const keyAt = keys [index - 1];"/>
+										<outline text="return ({">
+											<outline text="get: function () {">
+												<outline text="return (container [keyAt]);"/>
+												<outline text="},"/>
+												</outline>
+											<outline text="set: function (theValue) {">
+												<outline text="container [keyAt] = theValue;"/>
+												<outline text="}"/>
+												</outline>
+											<outline text="});"/>
+											</outline>
+										<outline text="}"/>
+										</outline>
+									<outline text="var key = findKey (container, String (index));"/>
+									<outline text="if (key === undefined) {">
+										<outline text="key = String (index);"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="const keyFinal = key;"/>
+									<outline text="return ({">
+										<outline text="get: function () {">
+											<outline text="return (container [keyFinal]);"/>
+											<outline text="},"/>
+											</outline>
+										<outline text="set: function (theValue) {">
+											<outline text="container [keyFinal] = theValue;"/>
+											<outline text="}"/>
+											</outline>
+										<outline text="});"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="const message = &quot;Can't subscript the value because it isn't a list or a table.&quot;;"/>
+								<outline text="throw new Error (message);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;deref&quot;: {">
+								<outline text="const address = evalExpr (theNode.expr);"/>
+								<outline text="return (referenceForAddress (address));"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="default: {">
+								<outline text="const message = &quot;Can't assign into a &quot; + theNode.op + &quot; expression.&quot;;"/>
+								<outline text="throw new Error (message);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="}"/>
+							</outline>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function referenceForAddress (theAddress) {">
+						<outline text="if ((theAddress === undefined) || (theAddress.flAddress !== true)) {">
+							<outline text="const message = &quot;Can't dereference the value because it isn't an address.&quot;;"/>
+							<outline text="throw new Error (message);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="return (theAddress.reference);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="//expressions"/>
+					<outline text=""/>
+					<outline text="function coerceForCompare (left, right) {">
+						<outline text="if ((typeof left === &quot;string&quot;) &amp;&amp; (typeof right === &quot;string&quot;)) { //Frontier string comparison is case-insensitive">
+							<outline text="return ({left: left.toLowerCase (), right: right.toLowerCase ()});"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="return ({left, right});"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function evalExpr (theNode) {">
+						<outline text=""/>
+						<outline text="switch (theNode.op) {">
+							<outline text=""/>
+							<outline text="case &quot;const&quot;:">
+								<outline text="return (theNode.value);"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;list&quot;: {">
+								<outline text="const items = [];"/>
+								<outline text="theNode.items.forEach (function (item) {">
+									<outline text="items.push (evalExpr (item));"/>
+									<outline text="});"/>
+									</outline>
+								<outline text="return (items);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;id&quot;: {">
+								<outline text="const reference = referenceForId (theNode.name);"/>
+								<outline text="if (reference === undefined) {">
+									<outline text="const verb = environment.verbs [theNode.name.toLowerCase ()];"/>
+									<outline text="if (verb !== undefined) {">
+										<outline text="return (verb);"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="const message = &quot;Can't get the value of &quot; + theNode.name + &quot; because there is no object with that name.&quot;;"/>
+									<outline text="throw new Error (message);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="return (reference.get ());"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;computedid&quot;:">
+								<outline text="return (referenceForNode (theNode).get ());"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;dot&quot;: {">
+								<outline text="//try a verb first: file.copy is a verb, not a table walk"/>
+								<outline text="const dottedName = dottedNameForNode (theNode);"/>
+								<outline text="if (dottedName !== undefined) {">
+									<outline text="const verb = environment.verbs [dottedName.toLowerCase ()];"/>
+									<outline text="if (verb !== undefined) {">
+										<outline text="return (verb);"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="return (referenceForNode (theNode).get ());"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;index&quot;:">
+								<outline text="return (referenceForNode (theNode).get ());"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;address&quot;: {">
+								<outline text="const reference = referenceForNode (theNode.expr);"/>
+								<outline text="return ({flAddress: true, reference, pathText: pathTextForNode (theNode.expr)});"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;deref&quot;:">
+								<outline text="return (referenceForAddress (evalExpr (theNode.expr)).get ());"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;call&quot;:">
+								<outline text="return (evalCall (theNode));"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;not&quot;:">
+								<outline text="return (!flTrue (evalExpr (theNode.expr)));"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;negate&quot;:">
+								<outline text="return (-evalExpr (theNode.expr));"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;preincrement&quot;: case &quot;postincrement&quot;: {">
+								<outline text="const reference = referenceForNode (theNode.expr);"/>
+								<outline text="const oldValue = reference.get ();"/>
+								<outline text="reference.set (oldValue + 1);"/>
+								<outline text="return (theNode.op === &quot;preincrement&quot; ? oldValue + 1 : oldValue);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;predecrement&quot;: case &quot;postdecrement&quot;: {">
+								<outline text="const reference = referenceForNode (theNode.expr);"/>
+								<outline text="const oldValue = reference.get ();"/>
+								<outline text="reference.set (oldValue - 1);"/>
+								<outline text="return (theNode.op === &quot;predecrement&quot; ? oldValue - 1 : oldValue);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;and&quot;:">
+								<outline text="return (flTrue (evalExpr (theNode.left)) &amp;&amp; flTrue (evalExpr (theNode.right)));"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;or&quot;:">
+								<outline text="return (flTrue (evalExpr (theNode.left)) || flTrue (evalExpr (theNode.right)));"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;add&quot;:">
+								<outline text="return (evalExpr (theNode.left) + evalExpr (theNode.right));"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;subtract&quot;: {">
+								<outline text="const left = evalExpr (theNode.left), right = evalExpr (theNode.right);"/>
+								<outline text="if ((typeof left === &quot;string&quot;) || (typeof right === &quot;string&quot;)) { //Frontier: &quot;abc:&quot; - &quot;:&quot; strips the suffix">
+									<outline text="const leftString = String (left), rightString = String (right);"/>
+									<outline text="if (leftString.endsWith (rightString)) {">
+										<outline text="return (leftString.slice (0, leftString.length - rightString.length));"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="return (leftString);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="return (left - right);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;multiply&quot;:">
+								<outline text="return (evalExpr (theNode.left) * evalExpr (theNode.right));"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;divide&quot;:">
+								<outline text="return (evalExpr (theNode.left) / evalExpr (theNode.right));"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;mod&quot;:">
+								<outline text="return (evalExpr (theNode.left) % evalExpr (theNode.right));"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;eq&quot;: {">
+								<outline text="const pair = coerceForCompare (evalExpr (theNode.left), evalExpr (theNode.right));"/>
+								<outline text="return (pair.left == pair.right); //loose on purpose: Frontier coerces across types"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;ne&quot;: {">
+								<outline text="const pair = coerceForCompare (evalExpr (theNode.left), evalExpr (theNode.right));"/>
+								<outline text="return (pair.left != pair.right);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;lt&quot;: {">
+								<outline text="const pair = coerceForCompare (evalExpr (theNode.left), evalExpr (theNode.right));"/>
+								<outline text="return (pair.left &lt; pair.right);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;gt&quot;: {">
+								<outline text="const pair = coerceForCompare (evalExpr (theNode.left), evalExpr (theNode.right));"/>
+								<outline text="return (pair.left &gt; pair.right);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;le&quot;: {">
+								<outline text="const pair = coerceForCompare (evalExpr (theNode.left), evalExpr (theNode.right));"/>
+								<outline text="return (pair.left &lt;= pair.right);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;ge&quot;: {">
+								<outline text="const pair = coerceForCompare (evalExpr (theNode.left), evalExpr (theNode.right));"/>
+								<outline text="return (pair.left &gt;= pair.right);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;beginswith&quot;: {">
+								<outline text="const pair = coerceForCompare (String (evalExpr (theNode.left)), String (evalExpr (theNode.right)));"/>
+								<outline text="return (pair.left.startsWith (pair.right));"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;endswith&quot;: {">
+								<outline text="const pair = coerceForCompare (String (evalExpr (theNode.left)), String (evalExpr (theNode.right)));"/>
+								<outline text="return (pair.left.endsWith (pair.right));"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;contains&quot;: {">
+								<outline text="const pair = coerceForCompare (String (evalExpr (theNode.left)), String (evalExpr (theNode.right)));"/>
+								<outline text="return (pair.left.indexOf (pair.right) !== -1);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;namedarg&quot;:">
+								<outline text="return (evalExpr (theNode.value));"/>
+								</outline>
+							<outline text=""/>
+							<outline text="default: {">
+								<outline text="const message = &quot;Can't evaluate the expression because the operator &quot; + theNode.op + &quot; isn't implemented.&quot;;"/>
+								<outline text="throw new Error (message);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="}"/>
+							</outline>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function flTrue (theValue) {">
+						<outline text="return ((theValue !== false) &amp;&amp; (theValue !== undefined) &amp;&amp; (theValue !== 0) &amp;&amp; (theValue !== &quot;&quot;));"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function dottedNameForNode (theNode) { //x.y.z as a string, or undefined if it isn't a plain path">
+						<outline text="if (theNode.op === &quot;id&quot;) {">
+							<outline text="return (theNode.name);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="if (theNode.op === &quot;dot&quot;) {">
+							<outline text="const left = dottedNameForNode (theNode.left);"/>
+							<outline text="if (left === undefined) {">
+								<outline text="return (undefined);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="return (left + &quot;.&quot; + theNode.name);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="return (undefined);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function pathTextForNode (theNode) {">
+						<outline text="const dotted = dottedNameForNode (theNode);"/>
+						<outline text="if (dotted !== undefined) {">
+							<outline text="return (dotted);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="return (&quot;(computed)&quot;);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function evalCall (theNode) {">
+						<outline text=""/>
+						<outline text="const args = [];"/>
+						<outline text="theNode.args.forEach (function (argNode) {">
+							<outline text="args.push (evalExpr (argNode));"/>
+							<outline text="});"/>
+							</outline>
+						<outline text=""/>
+						<outline text="//a handler defined in scope?"/>
+						<outline text=""/>
+						<outline text="const dottedName = dottedNameForNode (theNode.fn);"/>
+						<outline text=""/>
+						<outline text="if (theNode.fn.op === &quot;id&quot;) {">
+							<outline text="const reference = referenceForId (theNode.fn.name);"/>
+							<outline text="if (reference !== undefined) {">
+								<outline text="const value = reference.get ();"/>
+								<outline text="if ((value !== undefined) &amp;&amp; (value.flHandler === true)) {">
+									<outline text="return (callHandler (value, args));"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="}"/>
+								</outline>
+							<outline text="}"/>
+							</outline>
+						<outline text=""/>
+						<outline text="if (dottedName !== undefined) {">
+							<outline text="const verb = environment.verbs [dottedName.toLowerCase ()];"/>
+							<outline text="if (verb !== undefined) {">
+								<outline text="environment.trace.push ({verb: dottedName, args});"/>
+								<outline text="return (verb (args, environment));"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="//a dotted path may name a handler, or a script stored in the odb tree"/>
+							<outline text="try {">
+								<outline text="const value = referenceForNode (theNode.fn).get ();"/>
+								<outline text="if ((value !== undefined) &amp;&amp; (value.flHandler === true)) {">
+									<outline text="return (callHandler (value, args));"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="if ((value !== undefined) &amp;&amp; (value.flOdbScript === true)) {">
+									<outline text="environment.trace.push ({verb: dottedName, args, flOdbScript: true});"/>
+									<outline text="return (callOdbScript (value, args, dottedName));"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="}"/>
+								</outline>
+							<outline text="catch (err) {">
+								<outline text="if (err.flRethrow === true) {">
+									<outline text="throw err;"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="//fall through to the unknown-verb error below"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="if (environment.resolveExternalScript !== undefined) { //a sibling build script called by name">
+								<outline text="const external = environment.resolveExternalScript (dottedName);"/>
+								<outline text="if (external !== undefined) {">
+									<outline text="environment.trace.push ({verb: dottedName, args, flExternalScript: true});"/>
+									<outline text="return (callOdbScript (external, args, dottedName));"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="}"/>
+								</outline>
+							<outline text="const message = &quot;Can't call &quot; + dottedName + &quot; because it isn't a verb, a handler or a script.&quot;;"/>
+							<outline text="throw new Error (message);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text=""/>
+						<outline text="//calling through a computed value"/>
+						<outline text="const fn = evalExpr (theNode.fn);"/>
+						<outline text="if ((fn !== undefined) &amp;&amp; (fn.flHandler === true)) {">
+							<outline text="return (callHandler (fn, args));"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="if (typeof fn === &quot;function&quot;) {">
+							<outline text="environment.trace.push ({verb: pathTextForNode (theNode.fn), args});"/>
+							<outline text="return (fn (args, environment));"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="const message = &quot;Can't call &quot; + pathTextForNode (theNode.fn) + &quot; because it isn't a verb, a handler or a script.&quot;;"/>
+						<outline text="throw new Error (message);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function callHandler (theHandler, theArgs) {">
+						<outline text=""/>
+						<outline text="const frame = {vars: {}};"/>
+						<outline text=""/>
+						<outline text="const savedFrames = environment.frames;"/>
+						<outline text="environment.frames = theHandler.closureFrames.concat ([frame]);"/>
+						<outline text=""/>
+						<outline text="theHandler.params.forEach (function (param, ixParam) {">
+							<outline text="var value = theArgs [ixParam];"/>
+							<outline text="if (value === undefined) {">
+								<outline text="if (param.value !== undefined) {">
+									<outline text="value = evalExpr (param.value); //defaults see the params already bound: on copyone (a, b=a)"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="}"/>
+								</outline>
+							<outline text="frame.vars [param.name] = value;"/>
+							<outline text="});"/>
+							</outline>
+						<outline text=""/>
+						<outline text="try {">
+							<outline text="const result = evaluate (theHandler.body, environment);"/>
+							<outline text="return (result);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="catch (signal) {">
+							<outline text="if (signal.flReturnSignal) {">
+								<outline text="return (signal.value);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="throw signal;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="finally {">
+							<outline text="environment.frames = savedFrames;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function callOdbScript (theScript, theArgs, theName) {">
+						<outline text=""/>
+						<outline text="/*  A script value from the odb, called like a verb: parse it once,">
+							<outline text="evaluate its module (skipping test-code bundles), then call the"/>
+							<outline text="handler named for it -- Frontier's script-call semantics.  */"/>
+							</outline>
+						<outline text=""/>
+						<outline text="if (theScript.parsedStatements === undefined) {">
+							<outline text="if (environment.parseScript === undefined) {">
+								<outline text="const message = &quot;Can't call &quot; + theName + &quot; because no script parser is installed.&quot;;"/>
+								<outline text="throw new Error (message);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="theScript.parsedStatements = environment.parseScript (theScript.lines);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text=""/>
+						<outline text="const moduleFrame = {vars: {}};"/>
+						<outline text="const savedFrames = environment.frames;"/>
+						<outline text="environment.frames = [moduleFrame];"/>
+						<outline text=""/>
+						<outline text="try {">
+							<outline text="const statements = [];"/>
+							<outline text="theScript.parsedStatements.forEach (function (statement) {">
+								<outline text="if (statement.op !== &quot;bundle&quot;) { //a top-level bundle is test code, it doesn't run on a call">
+									<outline text="statements.push (statement);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="});"/>
+								</outline>
+							<outline text="const moduleValue = evaluate (statements, environment);"/>
+							<outline text=""/>
+							<outline text="const parts = theName.split (&quot;.&quot;);"/>
+							<outline text="const shortName = parts [parts.length - 1];"/>
+							<outline text="var handlerKey = findKey (moduleFrame.vars, shortName);"/>
+							<outline text=""/>
+							<outline text="if (handlerKey === undefined) {">
+								<outline text="const handlerNames = [];"/>
+								<outline text="Object.keys (moduleFrame.vars).forEach (function (key) {">
+									<outline text="const value = moduleFrame.vars [key];"/>
+									<outline text="if ((value !== undefined) &amp;&amp; (value.flHandler === true)) {">
+										<outline text="handlerNames.push (key);"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="});"/>
+									</outline>
+								<outline text="if (handlerNames.length === 1) {">
+									<outline text="handlerKey = handlerNames [0];"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="else {">
+									<outline text="if (handlerNames.length === 0) { //a straight-code script: the module run was the call">
+										<outline text="return (moduleValue);"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="if (handlerKey === undefined) {">
+								<outline text="const message = &quot;Can't call &quot; + theName + &quot; because its script doesn't define a handler by that name.&quot;;"/>
+								<outline text="throw new Error (message);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="return (callHandler (moduleFrame.vars [handlerKey], theArgs));"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="catch (err) {">
+							<outline text="err.flRethrow = true;"/>
+							<outline text="throw err;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="finally {">
+							<outline text="environment.frames = savedFrames;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function currentFrame () {">
+						<outline text="if (environment.frames.length === 0) {">
+							<outline text="environment.frames.push ({vars: {}});"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="return (environment.frames [environment.frames.length - 1]);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="function runBody (theBody) {">
+						<outline text="return (evaluate (theBody, environment));"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="//statements"/>
+					<outline text=""/>
+					<outline text="theStatements.forEach (function (statement) {">
+						<outline text=""/>
+						<outline text="switch (statement.op) {">
+							<outline text=""/>
+							<outline text="case &quot;noop&quot;:">
+								<outline text="break;"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;sequence&quot;:">
+								<outline text="lastValue = evaluate (statement.statements, environment);"/>
+								<outline text="break;"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;handler&quot;: {">
+								<outline text="const handlerRec = {">
+									<outline text="flHandler: true,"/>
+									<outline text="name: statement.name,"/>
+									<outline text="params: statement.params,"/>
+									<outline text="body: statement.body,"/>
+									<outline text="closureFrames: environment.frames.slice ()"/>
+									<outline text="};"/>
+									</outline>
+								<outline text="currentFrame ().vars [statement.name] = handlerRec;"/>
+								<outline text="break;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;local&quot;: case &quot;global&quot;: {">
+								<outline text="statement.inits.forEach (function (init) {">
+									<outline text="var value;"/>
+									<outline text="if (init.value !== undefined) {">
+										<outline text="value = evalExpr (init.value);"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="if (statement.op === &quot;local&quot;) {">
+										<outline text="currentFrame ().vars [init.name] = value;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="else {">
+										<outline text="if (findKey (environment.odb, init.name) === undefined) {">
+											<outline text="environment.odb [init.name] = value;"/>
+											<outline text="}"/>
+											</outline>
+										<outline text="}"/>
+										</outline>
+									<outline text="});"/>
+									</outline>
+								<outline text="break;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;assign&quot;:">
+								<outline text="referenceForNode (statement.target).set (evalExpr (statement.value));"/>
+								<outline text="break;"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;expression&quot;:">
+								<outline text="lastValue = evalExpr (statement.expr);"/>
+								<outline text="break;"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;if&quot;:">
+								<outline text="if (flTrue (evalExpr (statement.test))) {">
+									<outline text="runBody (statement.body);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="else {">
+									<outline text="if (statement.elseBody !== undefined) {">
+										<outline text="runBody (statement.elseBody);"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="break;"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;loop&quot;: case &quot;loop3&quot;: case &quot;while&quot;: {">
+								<outline text="var guard = 0;"/>
+								<outline text="const maxIterations = 1000000;"/>
+								<outline text=""/>
+								<outline text="if (statement.op === &quot;loop3&quot;) {">
+									<outline text="evaluate ([statement.init], environment);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text=""/>
+								<outline text="var count;"/>
+								<outline text="if ((statement.op === &quot;loop&quot;) &amp;&amp; (statement.count !== undefined)) {">
+									<outline text="count = evalExpr (statement.count);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text=""/>
+								<outline text="while (true) {">
+									<outline text="guard++;"/>
+									<outline text="if (guard &gt; maxIterations) {">
+										<outline text="const message = &quot;Can't finish the loop because it ran &quot; + maxIterations + &quot; times.&quot;;"/>
+										<outline text="throw new Error (message);"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="if ((count !== undefined) &amp;&amp; (guard &gt; count)) {">
+										<outline text="break;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="if ((statement.op === &quot;while&quot;) &amp;&amp; !flTrue (evalExpr (statement.test))) {">
+										<outline text="break;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="if ((statement.op === &quot;loop3&quot;) &amp;&amp; !flTrue (evalExpr (statement.test))) {">
+										<outline text="break;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="try {">
+										<outline text="runBody (statement.body);"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="catch (signal) {">
+										<outline text="if (signal.flBreakSignal) {">
+											<outline text="break;"/>
+											<outline text="}"/>
+											</outline>
+										<outline text="if (!signal.flContinueSignal) {">
+											<outline text="throw signal;"/>
+											<outline text="}"/>
+											</outline>
+										<outline text="}"/>
+										</outline>
+									<outline text="if (statement.op === &quot;loop3&quot;) {">
+										<outline text="evaluate ([statement.step], environment);"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="break;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;for&quot;: {">
+								<outline text="const from = evalExpr (statement.from);"/>
+								<outline text="const limit = evalExpr (statement.limit);"/>
+								<outline text="var counter = from;"/>
+								<outline text="while (statement.flDown ? (counter &gt;= limit) : (counter &lt;= limit)) {">
+									<outline text="currentFrame ().vars [statement.name] = counter;"/>
+									<outline text="try {">
+										<outline text="runBody (statement.body);"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="catch (signal) {">
+										<outline text="if (signal.flBreakSignal) {">
+											<outline text="break;"/>
+											<outline text="}"/>
+											</outline>
+										<outline text="if (!signal.flContinueSignal) {">
+											<outline text="throw signal;"/>
+											<outline text="}"/>
+											</outline>
+										<outline text="}"/>
+										</outline>
+									<outline text="counter = statement.flDown ? counter - 1 : counter + 1;"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="break;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;forin&quot;: {">
+								<outline text="const list = evalExpr (statement.list);"/>
+								<outline text="var items = list;"/>
+								<outline text="if ((list !== undefined) &amp;&amp; (list.flAddress === true)) { //for x in @table walks the table's values">
+									<outline text="items = [];"/>
+									<outline text="const table = list.reference.get ();"/>
+									<outline text="Object.keys (table).forEach (function (key) {">
+										<outline text="items.push (table [key]);"/>
+										<outline text="});"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="var flBroke = false;"/>
+								<outline text="items.forEach (function (item) {">
+									<outline text="if (flBroke) {">
+										<outline text="return;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="currentFrame ().vars [statement.name] = item;"/>
+									<outline text="try {">
+										<outline text="runBody (statement.body);"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="catch (signal) {">
+										<outline text="if (signal.flBreakSignal) {">
+											<outline text="flBroke = true;"/>
+											<outline text="return;"/>
+											<outline text="}"/>
+											</outline>
+										<outline text="if (!signal.flContinueSignal) {">
+											<outline text="throw signal;"/>
+											<outline text="}"/>
+											</outline>
+										<outline text="}"/>
+										</outline>
+									<outline text="});"/>
+									</outline>
+								<outline text="break;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;fileloop&quot;: {">
+								<outline text="const folder = evalExpr (statement.folder);"/>
+								<outline text="var depth = 1;"/>
+								<outline text="if (statement.depth !== undefined) {">
+									<outline text="depth = evalExpr (statement.depth);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="const fileloopVerb = environment.verbs [&quot;fileloop.list&quot;];"/>
+								<outline text="if (fileloopVerb === undefined) {">
+									<outline text="const message = &quot;Can't run the fileloop because no fileloop.list verb is installed.&quot;;"/>
+									<outline text="throw new Error (message);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="const paths = fileloopVerb ([folder, depth], environment);"/>
+								<outline text="var flBroke = false;"/>
+								<outline text="paths.forEach (function (thePath) {">
+									<outline text="if (flBroke) {">
+										<outline text="return;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="currentFrame ().vars [statement.name] = thePath;"/>
+									<outline text="try {">
+										<outline text="runBody (statement.body);"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="catch (signal) {">
+										<outline text="if (signal.flBreakSignal) {">
+											<outline text="flBroke = true;"/>
+											<outline text="return;"/>
+											<outline text="}"/>
+											</outline>
+										<outline text="if (!signal.flContinueSignal) {">
+											<outline text="throw signal;"/>
+											<outline text="}"/>
+											</outline>
+										<outline text="}"/>
+										</outline>
+									<outline text="});"/>
+									</outline>
+								<outline text="break;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;bundle&quot;:">
+								<outline text="runBody (statement.body);"/>
+								<outline text="break;"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;with&quot;: {">
+								<outline text="const table = evalExpr (statement.path);"/>
+								<outline text="var withTable = table;"/>
+								<outline text="if ((table !== undefined) &amp;&amp; (table.flAddress === true)) {">
+									<outline text="withTable = table.reference.get ();"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="environment.withPaths.push (withTable);"/>
+								<outline text="try {">
+									<outline text="runBody (statement.body);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="finally {">
+									<outline text="environment.withPaths.pop ();"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="break;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;try&quot;:">
+								<outline text="try {">
+									<outline text="runBody (statement.body);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="catch (signal) {">
+									<outline text="if (signal.flBreakSignal || signal.flContinueSignal || signal.flReturnSignal) {">
+										<outline text="throw signal;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="currentFrame ().vars [&quot;tryerror&quot;] = signal.message;"/>
+									<outline text="if (statement.elseBody !== undefined) {">
+										<outline text="runBody (statement.elseBody);"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="break;"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;case&quot;: {">
+								<outline text="const value = evalExpr (statement.value);"/>
+								<outline text="var flMatched = false;"/>
+								<outline text="statement.clauses.forEach (function (clause) {">
+									<outline text="if (flMatched) {">
+										<outline text="return;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="const pair = coerceForCompare (value, evalExpr (clause.value));"/>
+									<outline text="if (pair.left == pair.right) {">
+										<outline text="flMatched = true;"/>
+										<outline text="runBody (clause.body);"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="});"/>
+									</outline>
+								<outline text="if (!flMatched &amp;&amp; (statement.elseBody !== undefined)) {">
+									<outline text="runBody (statement.elseBody);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="break;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;return&quot;:">
+								<outline text="throw new ReturnSignal (statement.value === undefined ? undefined : evalExpr (statement.value));"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;break&quot;:">
+								<outline text="throw new BreakSignal ();"/>
+								</outline>
+							<outline text=""/>
+							<outline text="case &quot;continue&quot;:">
+								<outline text="throw new ContinueSignal ();"/>
+								</outline>
+							<outline text=""/>
+							<outline text="default: {">
+								<outline text="const message = &quot;Can't run the statement because the operator &quot; + statement.op + &quot; isn't implemented.&quot;;"/>
+								<outline text="throw new Error (message);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="}"/>
+							</outline>
+						<outline text="});"/>
+						</outline>
+					<outline text=""/>
+					<outline text="return (lastValue);"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="exports.makeEnvironment = makeEnvironment;"/>
+				<outline text="exports.evaluate = evaluate;"/>
+				<outline text="exports.findKey = findKey;"/>
+				</outline>
+			<outline text="code/verbs.js">
+				<outline text="/*  The verb library for the UserTalk interpreter prototype: real file">
+					<outline text="verbs over Node fs behind a Mac-colon-path map, the string and clock"/>
+					<outline text="verbs the build scripts use, and loud trace-only stubs for the rest."/>
+					<outline text=""/>
+					<outline text="Unimplemented verbs fail loudly -- nothing silently succeeds."/>
+					<outline text=""/>
+					<outline text="by CC, 7/27/26 */"/>
+					</outline>
+				<outline text=""/>
+				<outline text="const fs = require (&quot;fs&quot;);"/>
+				<outline text="const path = require (&quot;path&quot;);"/>
+				<outline text=""/>
+				<outline text="function makeVerbs (thePathMap, theTrace) {">
+					<outline text=""/>
+					<outline text="function macToReal (theColonPath) {">
+						<outline text="var found, foundReal;"/>
+						<outline text="Object.keys (thePathMap.prefixes).forEach (function (prefix) {">
+							<outline text="if (theColonPath.toLowerCase ().indexOf (prefix.toLowerCase ()) === 0) {">
+								<outline text="if ((found === undefined) || (prefix.length &gt; found.length)) {">
+									<outline text="found = prefix;"/>
+									<outline text="foundReal = thePathMap.prefixes [prefix];"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="}"/>
+								</outline>
+							<outline text="});"/>
+							</outline>
+						<outline text="if (found === undefined) {">
+							<outline text="const message = &quot;Can't map the path &quot; + theColonPath + &quot; because no prefix in the path map covers it.&quot;;"/>
+							<outline text="throw new Error (message);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="var rest = theColonPath.slice (found.length);"/>
+						<outline text="if (rest.indexOf (&quot;:&quot;) === 0) {">
+							<outline text="rest = rest.slice (1);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="if (rest.endsWith (&quot;:&quot;)) {">
+							<outline text="rest = rest.slice (0, rest.length - 1);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="return (path.join (foundReal, rest.split (&quot;:&quot;).join (&quot;/&quot;)));"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="const verbs = {};"/>
+					<outline text=""/>
+					<outline text="//file verbs"/>
+					<outline text=""/>
+					<outline text="verbs [&quot;file.copy&quot;] = function (args) {">
+						<outline text="const source = macToReal (args [0]);"/>
+						<outline text="const dest = macToReal (args [1]);"/>
+						<outline text="fs.copyFileSync (source, dest);"/>
+						<outline text="return (true);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;file.surefilepath&quot;] = function (args) {">
+						<outline text="const dest = macToReal (args [0]);"/>
+						<outline text="fs.mkdirSync (path.dirname (dest), {recursive: true});"/>
+						<outline text="return (true);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;file.surefolder&quot;] = function (args) {">
+						<outline text="fs.mkdirSync (macToReal (args [0]), {recursive: true});"/>
+						<outline text="return (true);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;file.exists&quot;] = function (args) {">
+						<outline text="return (fs.existsSync (macToReal (args [0])));"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;file.isfolder&quot;] = function (args) {">
+						<outline text="const thePath = macToReal (args [0]);"/>
+						<outline text="if (!fs.existsSync (thePath)) {">
+							<outline text="return (false);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="return (fs.statSync (thePath).isDirectory ());"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;file.readwholefile&quot;] = function (args) {">
+						<outline text="return (fs.readFileSync (macToReal (args [0]), &quot;latin1&quot;));"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;file.writewholefile&quot;] = function (args) {">
+						<outline text="const dest = macToReal (args [0]);"/>
+						<outline text="fs.mkdirSync (path.dirname (dest), {recursive: true});"/>
+						<outline text="fs.writeFileSync (dest, String (args [1]), &quot;latin1&quot;);"/>
+						<outline text="return (true);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;file.delete&quot;] = function (args) {">
+						<outline text="const thePath = macToReal (args [0]);"/>
+						<outline text="if (fs.existsSync (thePath)) {">
+							<outline text="fs.rmSync (thePath, {recursive: true});"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="return (true);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;file.filefrompath&quot;] = function (args) {">
+						<outline text="var theColonPath = String (args [0]);"/>
+						<outline text="if (theColonPath.endsWith (&quot;:&quot;)) {">
+							<outline text="theColonPath = theColonPath.slice (0, theColonPath.length - 1);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="const parts = theColonPath.split (&quot;:&quot;);"/>
+						<outline text="return (parts [parts.length - 1]);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;file.folderfrompath&quot;] = function (args) {">
+						<outline text="var theColonPath = String (args [0]);"/>
+						<outline text="if (theColonPath.endsWith (&quot;:&quot;)) {">
+							<outline text="theColonPath = theColonPath.slice (0, theColonPath.length - 1);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="const ixLast = theColonPath.lastIndexOf (&quot;:&quot;);"/>
+						<outline text="return (theColonPath.slice (0, ixLast + 1));"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;file.modified&quot;] = function (args) {">
+						<outline text="return (fs.statSync (macToReal (args [0])).mtime);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;fileloop.list&quot;] = function (args) { //the interpreter's fileloop support: colon paths of everything in the folder">
+						<outline text="const folderColon = String (args [0]);"/>
+						<outline text="const depth = args [1];"/>
+						<outline text="const folderReal = macToReal (folderColon);"/>
+						<outline text="const result = [];"/>
+						<outline text="function visit (realFolder, colonFolder, level) {">
+							<outline text="fs.readdirSync (realFolder).forEach (function (fname) {">
+								<outline text="const realChild = path.join (realFolder, fname);"/>
+								<outline text="const flFolder = fs.statSync (realChild).isDirectory ();"/>
+								<outline text="const colonChild = colonFolder + fname + (flFolder ? &quot;:&quot; : &quot;&quot;);"/>
+								<outline text="result.push (colonChild);"/>
+								<outline text="if (flFolder &amp;&amp; ((depth === Infinity) || (level &lt; depth))) {">
+									<outline text="visit (realChild, colonChild, level + 1);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="});"/>
+								</outline>
+							<outline text="}"/>
+							</outline>
+						<outline text="var colonBase = folderColon;"/>
+						<outline text="if (!colonBase.endsWith (&quot;:&quot;)) {">
+							<outline text="colonBase += &quot;:&quot;;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="visit (folderReal, colonBase, 1);"/>
+						<outline text="return (result);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="//string and value verbs"/>
+					<outline text=""/>
+					<outline text="verbs [&quot;string.replaceall&quot;] = function (args) {">
+						<outline text="return (String (args [0]).split (String (args [1])).join (String (args [2])));"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;string.replace&quot;] = function (args) {">
+						<outline text="return (String (args [0]).replace (String (args [1]), String (args [2])));"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;string.delete&quot;] = function (args) { //1-based start, count">
+						<outline text="const theString = String (args [0]);"/>
+						<outline text="const ixStart = args [1] - 1;"/>
+						<outline text="return (theString.slice (0, ixStart) + theString.slice (ixStart + args [2]));"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;string.mid&quot;] = function (args) { //1-based start, count">
+						<outline text="return (String (args [0]).substr (args [1] - 1, args [2]));"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;string.lower&quot;] = function (args) {">
+						<outline text="return (String (args [0]).toLowerCase ());"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;string.upper&quot;] = function (args) {">
+						<outline text="return (String (args [0]).toUpperCase ());"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;string.filledstring&quot;] = function (args) {">
+						<outline text="return (String (args [0]).repeat (args [1]));"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;string.lastfield&quot;] = function (args) {">
+						<outline text="const parts = String (args [0]).split (String (args [1]));"/>
+						<outline text="return (parts [parts.length - 1]);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;string.popsuffix&quot;] = function (args) {">
+						<outline text="const theString = String (args [0]);"/>
+						<outline text="const ixDot = theString.lastIndexOf (&quot;.&quot;);"/>
+						<outline text="if (ixDot === -1) {">
+							<outline text="return (theString);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="return (theString.slice (0, ixDot));"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;string.countfields&quot;] = function (args) {">
+						<outline text="return (String (args [0]).split (String (args [1])).length);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;string.nthfield&quot;] = function (args) {">
+						<outline text="return (String (args [0]).split (String (args [1])) [args [2] - 1]);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;string&quot;] = function (args) {">
+						<outline text="return (String (args [0]));"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;number&quot;] = function (args) {">
+						<outline text="return (Number (args [0]));"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;sizeof&quot;] = function (args) {">
+						<outline text="const theValue = args [0];"/>
+						<outline text="if (typeof theValue === &quot;string&quot;) {">
+							<outline text="return (theValue.length);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="if (Array.isArray (theValue)) {">
+							<outline text="return (theValue.length);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="if ((theValue !== undefined) &amp;&amp; (theValue !== null) &amp;&amp; (typeof theValue === &quot;object&quot;)) {">
+							<outline text="return (Object.keys (theValue).length);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="return (0);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;defined&quot;] = function (args) {">
+						<outline text="return (args [0] !== undefined);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;typeof&quot;] = function (args) { //answers match the language constants, so case statements compare true">
+						<outline text="const theValue = args [0];"/>
+						<outline text="if (theValue === undefined) {">
+							<outline text="return (&quot;unknowntype&quot;);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="if (typeof theValue === &quot;string&quot;) {">
+							<outline text="return (&quot;stringtype&quot;);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="if (typeof theValue === &quot;number&quot;) {">
+							<outline text="return (&quot;numbertype&quot;);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="if (typeof theValue === &quot;boolean&quot;) {">
+							<outline text="return (&quot;booleantype&quot;);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="if (theValue instanceof Date) {">
+							<outline text="return (&quot;datetype&quot;);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="if (Array.isArray (theValue)) {">
+							<outline text="return (&quot;listtype&quot;);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="if (theValue.flOdbScript === true) {">
+							<outline text="return (theValue.scriptType === &quot;outline&quot; ? &quot;outlinetype&quot; : &quot;scripttype&quot;);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="if (theValue.flAddress === true) {">
+							<outline text="return (&quot;addresstype&quot;);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="if (theValue.type === &quot;binary&quot;) {">
+							<outline text="return (&quot;binarytype&quot;);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="if (theValue.type === &quot;wptext&quot;) {">
+							<outline text="return (&quot;wptexttype&quot;);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="return (&quot;tabletype&quot;);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;nameof&quot;] = function (args) { //the last component of an address's path">
+						<outline text="const theValue = args [0];"/>
+						<outline text="if ((theValue !== undefined) &amp;&amp; (theValue.flAddress === true)) {">
+							<outline text="const parts = theValue.pathText.split (&quot;.&quot;);"/>
+							<outline text="return (parts [parts.length - 1]);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="return (String (theValue));"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;msg&quot;] = function (args) { //7/27/26 by CC -- msg speaks: Frontier showed it to the user, we print it">
+						<outline text="console.log (String (args [0]));"/>
+						<outline text="return (true);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;new&quot;] = function (args) { //new (tabletype, @adr) -- create an empty value at the address">
+						<outline text="const theType = args [0];"/>
+						<outline text="const theAddress = args [1];"/>
+						<outline text="var value = {};"/>
+						<outline text="if (theType === &quot;listtype&quot;) {">
+							<outline text="value = [];"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="if (theType === &quot;stringtype&quot;) {">
+							<outline text="value = &quot;&quot;;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="if ((theType === &quot;outlinetype&quot;) || (theType === &quot;scripttype&quot;)) {">
+							<outline text="value = {flOdbScript: true, scriptType: theType === &quot;outlinetype&quot; ? &quot;outline&quot; : &quot;script&quot;, lines: []};"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="if ((theAddress === undefined) || (theAddress.flAddress !== true)) {">
+							<outline text="const message = &quot;Can't create the new &quot; + theType + &quot; because the second parameter isn't an address.&quot;;"/>
+							<outline text="throw new Error (message);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="theAddress.reference.set (value);"/>
+						<outline text="return (true);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;edit&quot;] = function (args) {">
+						<outline text="return (true); //opens a window in Frontier; the trace line stands in"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;date&quot;] = function (args) {">
+						<outline text="if (args.length === 0) {">
+							<outline text="return (new Date ());"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="return (new Date (args [0]));"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;clock.ticks&quot;] = function (args) {">
+						<outline text="return (Math.floor (Date.now () * 60 / 1000)); //Frontier ticks are 60ths of a second"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;file.rename&quot;] = function (args) {">
+						<outline text="const from = macToReal (args [0]);"/>
+						<outline text="fs.renameSync (from, path.join (path.dirname (from), String (args [1])));"/>
+						<outline text="return (true);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;clock.now&quot;] = function (args) {">
+						<outline text="return (new Date ());"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;date.netstandardstring&quot;] = function (args) {">
+						<outline text="return (new Date (args [0]).toUTCString ());"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;speaker.beep&quot;] = function (args) {">
+						<outline text="return (true); //the trace line is the beep"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;dialog.alert&quot;] = function (args) {">
+						<outline text="return (true); //the trace line is the dialog"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;dialog.notify&quot;] = verbs [&quot;dialog.alert&quot;];"/>
+					<outline text=""/>
+					<outline text="//stubs: recorded in the trace by the evaluator, loud about what they are"/>
+					<outline text=""/>
+					<outline text="const stubNames = [">
+						<outline text="&quot;nodeeditorsuite.savesourceopmltorepo&quot;, &quot;nodeeditorsuite.building.copyfile&quot;,"/>
+						<outline text="&quot;nodeeditorsuite.utilities.deletedsstorefiles&quot;,"/>
+						<outline text="&quot;s3.newobject&quot;, &quot;s3.getobject&quot;,"/>
+						<outline text="&quot;tcp.httpreadurl&quot;,"/>
+						<outline text="&quot;target.set&quot;, &quot;target.get&quot;,"/>
+						<outline text="&quot;filemenu.savemyroot&quot;,"/>
+						<outline text="&quot;op.outlinetoxml&quot;, &quot;op.xmltooutline&quot;, &quot;op.firstsummit&quot;, &quot;op.go&quot;, &quot;op.insert&quot;,"/>
+						<outline text="&quot;op.deleteline&quot;, &quot;op.getlinetext&quot;, &quot;op.setlinetext&quot;, &quot;op.wipe&quot;, &quot;op.sort&quot;,"/>
+						<outline text="&quot;xml.addattribute&quot;, &quot;xml.addvalue&quot;, &quot;xml.addtable&quot;, &quot;xml.getvalue&quot;,"/>
+						<outline text="&quot;xml.getattributevalue&quot;, &quot;xml.entityencode&quot;, &quot;xml.decompile&quot;, &quot;xml.compile&quot;,"/>
+						<outline text="&quot;json.compile&quot;, &quot;json.decompile&quot;,"/>
+						<outline text="&quot;window.frontmost&quot;, &quot;op.getcursor&quot;, &quot;tcp.dns.getdottedid&quot;,"/>
+						<outline text="&quot;xml.opml.getbodyaddress&quot;, &quot;export.sendobject&quot;, &quot;file.getdatepath&quot;,"/>
+						<outline text="&quot;string.multiplereplaceall&quot;, &quot;xml.entitydecode&quot;,"/>
+						<outline text="&quot;op.setcursor&quot;, &quot;s3.objectexists&quot;, &quot;fatpages.buildfileatts&quot;"/>
+						<outline text="];"/>
+						</outline>
+					<outline text=""/>
+					<outline text="stubNames.forEach (function (name) {">
+						<outline text="verbs [name] = function (args) {">
+							<outline text="return ({flStub: true, verb: name});"/>
+							<outline text="};"/>
+							</outline>
+						<outline text="});"/>
+						</outline>
+					<outline text=""/>
+					<outline text="//the folder helpers resolve from the path map so folder math works end-to-end"/>
+					<outline text=""/>
+					<outline text="verbs [&quot;nodeeditorsuite.getfolder&quot;] = function (args) {">
+						<outline text="return (thePathMap.helpers.getFolder);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;nodeeditorsuite.getallserversfolder&quot;] = function (args) {">
+						<outline text="return (thePathMap.helpers.getAllServersFolder);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="verbs [&quot;nodeeditorsuite.getgithubfolder&quot;] = function (args) {">
+						<outline text="return (thePathMap.helpers.getGitHubFolder);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="return ({verbs, macToReal});"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="exports.makeVerbs = makeVerbs;"/>
+				</outline>
+			<outline text="code/odbLoader.js">
+				<outline text="/*  Load Dave's real object database into the interpreter's namespace:">
+					<outline text="user.* from root.user.fttb, config.nodeEditor.projects from the"/>
+					<outline text="projects fttb, and the whole nodeEditor guest database (the suite)."/>
+					<outline text=""/>
+					<outline text="Tables become plain objects. Scripts and outlines become"/>
+					<outline text="{flOdbScript, lines} records the evaluator can parse and call on"/>
+					<outline text="first use. Addresses become {flOdbAddressText, path}."/>
+					<outline text=""/>
+					<outline text="by CC, 7/27/26 */"/>
+					</outline>
+				<outline text=""/>
+				<outline text="const frontierOdb = require (&quot;/Users/davewiner/Claude/frontierOdb/frontierodb.js&quot;);"/>
+				<outline text=""/>
+				<outline text="const pathUserFttb = &quot;/Users/davewiner/Claude/frontierOdb/misc/root.user.fttb&quot;;"/>
+				<outline text="const pathProjectsFttb = &quot;/Users/davewiner/Claude/frontierOdb/misc/nodeEditor.projects.fttb&quot;;"/>
+				<outline text="const pathSuiteJson = &quot;/Users/davewiner/Claude/daveMigrates/misc/nodeEditor.json&quot;;"/>
+				<outline text=""/>
+				<outline text="function convertValue (theValue) {">
+					<outline text=""/>
+					<outline text="if ((theValue === undefined) || (theValue === null)) {">
+						<outline text="return (undefined);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="if (typeof theValue !== &quot;object&quot;) {">
+						<outline text="return (theValue);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="if (theValue.type === &quot;table&quot;) {">
+						<outline text="const table = {};"/>
+						<outline text="Object.keys (theValue.value).forEach (function (name) {">
+							<outline text="table [name] = convertValue (theValue.value [name]);"/>
+							<outline text="});"/>
+							</outline>
+						<outline text="return (table);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="if (((theValue.type === &quot;script&quot;) || (theValue.type === &quot;outline&quot;)) &amp;&amp; (theValue.lines !== undefined)) {">
+						<outline text="return ({flOdbScript: true, scriptType: theValue.type, lines: theValue.lines});"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="if (theValue.type === &quot;address&quot;) {">
+						<outline text="return ({flOdbAddressText: true, path: theValue.path});"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="return (theValue); //binary and friends ride along as markers"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="function convertTopLevel (theTable) {">
+					<outline text="const result = {};"/>
+					<outline text="Object.keys (theTable).forEach (function (name) {">
+						<outline text="result [name] = convertValue (theTable [name]);"/>
+						<outline text="});"/>
+						</outline>
+					<outline text="return (result);"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="function loadOdb () {">
+					<outline text=""/>
+					<outline text="const fs = require (&quot;fs&quot;);"/>
+					<outline text=""/>
+					<outline text="const theOdb = {};"/>
+					<outline text=""/>
+					<outline text="//the whole nodeEditor guest database: nodeEditorSuite and friends"/>
+					<outline text="const theSuiteDb = JSON.parse (fs.readFileSync (pathSuiteJson, &quot;utf8&quot;));"/>
+					<outline text="Object.keys (theSuiteDb).forEach (function (name) {">
+						<outline text="theOdb [name] = convertValue (theSuiteDb [name]);"/>
+						<outline text="});"/>
+						</outline>
+					<outline text=""/>
+					<outline text="//user.* -- his real user table"/>
+					<outline text="const theUserPage = frontierOdb.readFatPage (pathUserFttb);"/>
+					<outline text="theOdb.user = convertTopLevel (theUserPage.value.value);"/>
+					<outline text=""/>
+					<outline text="//config.nodeEditor.projects -- the 511 projects"/>
+					<outline text="const theProjectsPage = frontierOdb.readFatPage (pathProjectsFttb);"/>
+					<outline text="theOdb.config = {">
+						<outline text="nodeEditor: {">
+							<outline text="projects: convertTopLevel (theProjectsPage.value.value)"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="theOdb.scratchpad = {};"/>
+					<outline text="theOdb.system = theOdb.system || {};"/>
+					<outline text="theOdb.frontier = {pathstring: &quot;Macintosh HD:Users:davewiner:frontier:&quot;};"/>
+					<outline text=""/>
+					<outline text="return (theOdb);"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="exports.loadOdb = loadOdb;"/>
+				</outline>
+			<outline text="code/usertalk.js">
+				<outline text="const myProductName = &quot;usertalk&quot;, myVersion = &quot;0.1.0&quot;; //7/27/26 by CC -- the UserTalk language running on Node; born in the 7/26-27 overnight research run, named by DW 7/27"/>
+				<outline text=""/>
+				<outline text="const parse = require (&quot;./parse.js&quot;);"/>
+				<outline text="const evaluate = require (&quot;./evaluate.js&quot;);"/>
+				<outline text="const verbs = require (&quot;./verbs.js&quot;);"/>
+				<outline text="const odbLoader = require (&quot;./odbLoader.js&quot;);"/>
+				<outline text=""/>
+				<outline text="exports.parseLine = parse.parseLine;"/>
+				<outline text="exports.parseOutline = parse.parseOutline;"/>
+				<outline text="exports.tokenize = parse.tokenize;"/>
+				<outline text="exports.linesToTree = parse.linesToTree;"/>
+				<outline text="exports.makeEnvironment = evaluate.makeEnvironment;"/>
+				<outline text="exports.evaluate = evaluate.evaluate;"/>
+				<outline text="exports.makeVerbs = verbs.makeVerbs;"/>
+				<outline text="exports.loadOdb = odbLoader.loadOdb;"/>
+				<outline text="exports.myProductName = myProductName;"/>
+				<outline text="exports.myVersion = myVersion;"/>
+				</outline>
+			<outline text="code/run.js">
+				<outline text="/*  Run one UserTalk script outline under the interpreter.">
+					<outline text=""/>
+					<outline text="node run.js path/to/script.opml [--trace]"/>
+					<outline text="node run.js buildBelter.opml [--trace]"/>
+					<outline text=""/>
+					<outline text="A path that exists is run as given; a bare name is looked up in the"/>
+					<outline text="build-scripts folder. Binds user.prefs from the path map, runs the"/>
+					<outline text="top-level handler, prints every verb call."/>
+					<outline text=""/>
+					<outline text="by CC, 7/27/26 */"/>
+					</outline>
+				<outline text=""/>
+				<outline text="const fs = require (&quot;fs&quot;);"/>
+				<outline text="const parse = require (&quot;./parse.js&quot;);"/>
+				<outline text="const evaluate = require (&quot;./evaluate.js&quot;);"/>
+				<outline text="const verbsMaker = require (&quot;./verbs.js&quot;);"/>
+				<outline text=""/>
+				<outline text="const folderBuildScripts = &quot;/Users/davewiner/Claude/daveMigrates/usertalk build scripts&quot;;"/>
+				<outline text="const pathPathMap = &quot;/Users/davewiner/Claude/usertalk/code/pathmap.json&quot;;"/>
+				<outline text=""/>
+				<outline text="const scriptName = process.argv [2];"/>
+				<outline text="const flTrace = process.argv.indexOf (&quot;--trace&quot;) !== -1;"/>
+				<outline text=""/>
+				<outline text="if (scriptName === undefined) {">
+					<outline text="console.log (&quot;usage: node run.js buildBelter.opml [--trace]&quot;);"/>
+					<outline text="process.exit (1);"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="function unescapeXml (theString) {">
+					<outline text="return (theString">
+						<outline text=".replace (/&amp;lt;/g, &quot;&lt;&quot;)"/>
+						<outline text=".replace (/&amp;gt;/g, &quot;&gt;&quot;)"/>
+						<outline text=".replace (/&amp;quot;/g, &quot;\&quot;&quot;)"/>
+						<outline text=".replace (/&amp;apos;/g, &quot;'&quot;)"/>
+						<outline text=".replace (/&amp;amp;/g, &quot;&amp;&quot;));"/>
+						</outline>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="function opmlToTree (theXml) {">
+					<outline text="const root = {text: &quot;&quot;, subs: []};"/>
+					<outline text="const stack = [root];"/>
+					<outline text="var depthSkip = -1;"/>
+					<outline text="var depth = 0;"/>
+					<outline text="const tagPattern = /&lt;outline\b([^&gt;]*?)(\/?)&gt;|&lt;\/outline&gt;/g;"/>
+					<outline text="var match;"/>
+					<outline text="while ((match = tagPattern.exec (theXml)) !== null) {">
+						<outline text="if (match [0] === &quot;&lt;/outline&gt;&quot;) {">
+							<outline text="depth--;"/>
+							<outline text="if ((depthSkip &gt;= 0) &amp;&amp; (depth &lt;= depthSkip)) {">
+								<outline text="depthSkip = -1;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="stack.length = depth + 1;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="else {">
+							<outline text="const attributes = match [1];"/>
+							<outline text="const flSelfClosing = match [2] === &quot;/&quot;;"/>
+							<outline text="const flComment = /isComment=&quot;true&quot;/.test (attributes);"/>
+							<outline text="const textMatch = attributes.match (/text=&quot;([^&quot;]*)&quot;/);"/>
+							<outline text="var text = &quot;&quot;;"/>
+							<outline text="if (textMatch !== null) {">
+								<outline text="text = unescapeXml (textMatch [1]);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="if (depthSkip === -1) {">
+								<outline text="if (flComment) {">
+									<outline text="if (!flSelfClosing) {">
+										<outline text="depthSkip = depth;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="else {">
+									<outline text="const node = {text, subs: []};"/>
+									<outline text="stack [depth].subs.push (node);"/>
+									<outline text="if (!flSelfClosing) {">
+										<outline text="stack [depth + 1] = node;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="}"/>
+								</outline>
+							<outline text="if (!flSelfClosing) {">
+								<outline text="depth++;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="}"/>
+							</outline>
+						<outline text="}"/>
+						</outline>
+					<outline text="return (root.subs);"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="const thePathMap = JSON.parse (fs.readFileSync (pathPathMap, &quot;utf8&quot;));"/>
+				<outline text="var pathScript = scriptName; //7/27/26 by CC -- a path that exists runs as given, a bare name comes from the build-scripts folder"/>
+				<outline text="if (!fs.existsSync (pathScript)) {">
+					<outline text="pathScript = folderBuildScripts + &quot;/&quot; + scriptName;"/>
+					<outline text="}"/>
+					</outline>
+				<outline text="const theXml = fs.readFileSync (pathScript, &quot;latin1&quot;);"/>
+				<outline text="const theStatements = parse.parseOutline (opmlToTree (theXml));"/>
+				<outline text=""/>
+				<outline text="const theTrace = [];"/>
+				<outline text="const made = verbsMaker.makeVerbs (thePathMap, theTrace);"/>
+				<outline text=""/>
+				<outline text="const theOdb = {">
+					<outline text="user: {">
+						<outline text="prefs: thePathMap.prefs"/>
+						<outline text="},"/>
+						</outline>
+					<outline text="scratchpad: {},"/>
+					<outline text="config: {},"/>
+					<outline text="system: {}"/>
+					<outline text="};"/>
+					</outline>
+				<outline text=""/>
+				<outline text="const environment = evaluate.makeEnvironment (theOdb, made.verbs, theTrace);"/>
+				<outline text=""/>
+				<outline text="/*  Run the module the way Frontier runs a script: the top level binds">
+					<outline text="the handlers, and the trailing bundle -- Frontier's test-code"/>
+					<outline text="convention -- calls them. Only if the module made no verb calls do"/>
+					<outline text="we call the handler named for the script ourselves.  */"/>
+					</outline>
+				<outline text=""/>
+				<outline text="environment.frames.push ({vars: {}});"/>
+				<outline text=""/>
+				<outline text="var flFailed = false;"/>
+				<outline text="try {">
+					<outline text="evaluate.evaluate (theStatements, environment);"/>
+					<outline text=""/>
+					<outline text="if (theTrace.length === 0) {">
+						<outline text="const handlerName = pathScript.split (&quot;/&quot;).pop ().replace (/\.opml$/, &quot;&quot;); //7/27/26 by CC -- the script's own name, wherever it lives"/>
+						<outline text="const handlerKey = evaluate.findKey (environment.frames [0].vars, handlerName);"/>
+						<outline text="if (handlerKey !== undefined) {">
+							<outline text="evaluate.evaluate ([{op: &quot;expression&quot;, expr: {op: &quot;call&quot;, fn: {op: &quot;id&quot;, name: handlerKey}, args: []}}], environment);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="}"/>
+						</outline>
+					<outline text="}"/>
+					</outline>
+				<outline text="catch (err) {">
+					<outline text="flFailed = true;"/>
+					<outline text="console.log (&quot;FAILED: &quot; + err.message);"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="if (flTrace || flFailed) {">
+					<outline text="theTrace.forEach (function (entry) {">
+						<outline text="var argsText = &quot;&quot;;"/>
+						<outline text="entry.args.forEach (function (arg) {">
+							<outline text="if (argsText.length &gt; 0) {">
+								<outline text="argsText += &quot;, &quot;;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="if (typeof arg === &quot;string&quot;) {">
+								<outline text="argsText += &quot;\&quot;&quot; + arg + &quot;\&quot;&quot;;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="else {">
+								<outline text="argsText += String (arg);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="});"/>
+							</outline>
+						<outline text="console.log (entry.verb + &quot; (&quot; + argsText + &quot;)&quot;);"/>
+						<outline text="});"/>
+						</outline>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="console.log (scriptName + &quot;: &quot; + theTrace.length + &quot; verb calls&quot; + (flFailed ? &quot; (FAILED)&quot; : &quot; (ok)&quot;));"/>
+				</outline>
+			<outline text="code/runAll.js">
+				<outline text="/*  Execute all 361 build scripts under the interpreter in dry-run mode:">
+					<outline text="file verbs answer without touching disk, so what's being measured is"/>
+					<outline text="the language -- does every script RUN, not just parse."/>
+					<outline text=""/>
+					<outline text="by CC, 7/27/26 */"/>
+					</outline>
+				<outline text=""/>
+				<outline text="const fs = require (&quot;fs&quot;);"/>
+				<outline text="const parse = require (&quot;./parse.js&quot;);"/>
+				<outline text="const evaluate = require (&quot;./evaluate.js&quot;);"/>
+				<outline text="const verbsMaker = require (&quot;./verbs.js&quot;);"/>
+				<outline text=""/>
+				<outline text="const folderBuildScripts = &quot;/Users/davewiner/Claude/daveMigrates/usertalk build scripts&quot;;"/>
+				<outline text="const pathPathMap = &quot;/Users/davewiner/Claude/usertalk/code/pathmap.json&quot;;"/>
+				<outline text="const pathReport = &quot;/Users/davewiner/Claude/usertalk/misc/reports/runAllReport.json&quot;;"/>
+				<outline text=""/>
+				<outline text="function unescapeXml (theString) {">
+					<outline text="return (theString">
+						<outline text=".replace (/&amp;lt;/g, &quot;&lt;&quot;)"/>
+						<outline text=".replace (/&amp;gt;/g, &quot;&gt;&quot;)"/>
+						<outline text=".replace (/&amp;quot;/g, &quot;\&quot;&quot;)"/>
+						<outline text=".replace (/&amp;apos;/g, &quot;'&quot;)"/>
+						<outline text=".replace (/&amp;amp;/g, &quot;&amp;&quot;));"/>
+						</outline>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="function opmlToTree (theXml) {">
+					<outline text="const root = {text: &quot;&quot;, subs: []};"/>
+					<outline text="const stack = [root];"/>
+					<outline text="var depthSkip = -1;"/>
+					<outline text="var depth = 0;"/>
+					<outline text="const tagPattern = /&lt;outline\b([^&gt;]*?)(\/?)&gt;|&lt;\/outline&gt;/g;"/>
+					<outline text="var match;"/>
+					<outline text="while ((match = tagPattern.exec (theXml)) !== null) {">
+						<outline text="if (match [0] === &quot;&lt;/outline&gt;&quot;) {">
+							<outline text="depth--;"/>
+							<outline text="if ((depthSkip &gt;= 0) &amp;&amp; (depth &lt;= depthSkip)) {">
+								<outline text="depthSkip = -1;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="stack.length = depth + 1;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="else {">
+							<outline text="const attributes = match [1];"/>
+							<outline text="const flSelfClosing = match [2] === &quot;/&quot;;"/>
+							<outline text="const flComment = /isComment=&quot;true&quot;/.test (attributes);"/>
+							<outline text="const textMatch = attributes.match (/text=&quot;([^&quot;]*)&quot;/);"/>
+							<outline text="var text = &quot;&quot;;"/>
+							<outline text="if (textMatch !== null) {">
+								<outline text="text = unescapeXml (textMatch [1]);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="if (depthSkip === -1) {">
+								<outline text="if (flComment) {">
+									<outline text="if (!flSelfClosing) {">
+										<outline text="depthSkip = depth;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="else {">
+									<outline text="const node = {text, subs: []};"/>
+									<outline text="stack [depth].subs.push (node);"/>
+									<outline text="if (!flSelfClosing) {">
+										<outline text="stack [depth + 1] = node;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="}"/>
+								</outline>
+							<outline text="if (!flSelfClosing) {">
+								<outline text="depth++;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="}"/>
+							</outline>
+						<outline text="}"/>
+						</outline>
+					<outline text="return (root.subs);"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="const odbLoader = require (&quot;./odbLoader.js&quot;);"/>
+				<outline text=""/>
+				<outline text="const thePathMap = JSON.parse (fs.readFileSync (pathPathMap, &quot;utf8&quot;));"/>
+				<outline text=""/>
+				<outline text="console.log (&quot;loading the real odb...&quot;);"/>
+				<outline text="const theRealOdb = odbLoader.loadOdb (); //shared across runs -- dry mode, crosstalk acceptable for the metric"/>
+				<outline text="theRealOdb.user.prefs.githubfolder = thePathMap.prefs.githubfolder;"/>
+				<outline text="theRealOdb.user.prefs.dropboxfolder = thePathMap.prefs.dropboxfolder;"/>
+				<outline text="console.log (&quot;odb loaded&quot;);"/>
+				<outline text=""/>
+				<outline text="function makeDryVerbs (theTrace) {">
+					<outline text=""/>
+					<outline text="const made = verbsMaker.makeVerbs (thePathMap, theTrace);"/>
+					<outline text="const verbs = made.verbs;"/>
+					<outline text=""/>
+					<outline text="//file verbs answer plausibly without disk"/>
+					<outline text=""/>
+					<outline text="verbs [&quot;file.copy&quot;] = function (args) {">
+						<outline text="return (true);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text="verbs [&quot;file.surefilepath&quot;] = function (args) {">
+						<outline text="return (true);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text="verbs [&quot;file.surefolder&quot;] = function (args) {">
+						<outline text="return (true);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text="verbs [&quot;file.exists&quot;] = function (args) {">
+						<outline text="return (true);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text="verbs [&quot;file.isfolder&quot;] = function (args) {">
+						<outline text="return (String (args [0]).endsWith (&quot;:&quot;));"/>
+						<outline text="};"/>
+						</outline>
+					<outline text="verbs [&quot;file.readwholefile&quot;] = function (args) {">
+						<outline text="return (&quot;dry run contents of &quot; + args [0]);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text="verbs [&quot;file.writewholefile&quot;] = function (args) {">
+						<outline text="return (true);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text="verbs [&quot;file.delete&quot;] = function (args) {">
+						<outline text="return (true);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text="verbs [&quot;file.modified&quot;] = function (args) {">
+						<outline text="return (new Date (0));"/>
+						<outline text="};"/>
+						</outline>
+					<outline text="verbs [&quot;fileloop.list&quot;] = function (args) { //two pretend files so loop bodies execute">
+						<outline text="var base = String (args [0]);"/>
+						<outline text="if (!base.endsWith (&quot;:&quot;)) {">
+							<outline text="base += &quot;:&quot;;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="return ([base + &quot;dryRunFileOne.txt&quot;, base + &quot;dryRunFileTwo.txt&quot;]);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text="verbs [&quot;tcp.httpreadurl&quot;] = function (args) {">
+						<outline text="return (&quot;&quot;);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text="verbs [&quot;file.rename&quot;] = function (args) {">
+						<outline text="return (true);"/>
+						<outline text="};"/>
+						</outline>
+					<outline text=""/>
+					<outline text="return (verbs);"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="const externalScriptCache = {};"/>
+				<outline text=""/>
+				<outline text="function resolveExternalScript (theName) { //a sibling build script called by bare name">
+					<outline text="const lower = theName.toLowerCase ();"/>
+					<outline text="if (externalScriptCache [lower] !== undefined) {">
+						<outline text="return (externalScriptCache [lower]);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text="var found;"/>
+					<outline text="fs.readdirSync (folderBuildScripts).forEach (function (fname) {">
+						<outline text="if (fname.toLowerCase () === lower + &quot;.opml&quot;) {">
+							<outline text="found = fname;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="});"/>
+						</outline>
+					<outline text="if (found === undefined) {">
+						<outline text="return (undefined);"/>
+						<outline text="}"/>
+						</outline>
+					<outline text="const theXml = fs.readFileSync (folderBuildScripts + &quot;/&quot; + found, &quot;latin1&quot;);"/>
+					<outline text="const external = {flOdbScript: true, parsedStatements: parse.parseOutline (opmlToTree (theXml))};"/>
+					<outline text="externalScriptCache [lower] = external;"/>
+					<outline text="return (external);"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="var ctOk = 0, ctFailed = 0;"/>
+				<outline text="const failures = [];"/>
+				<outline text=""/>
+				<outline text="fs.readdirSync (folderBuildScripts).forEach (function (fname) {">
+					<outline text="if (!fname.endsWith (&quot;.opml&quot;)) {">
+						<outline text="return;"/>
+						<outline text="}"/>
+						</outline>
+					<outline text=""/>
+					<outline text="const theXml = fs.readFileSync (folderBuildScripts + &quot;/&quot; + fname, &quot;latin1&quot;);"/>
+					<outline text="const theStatements = parse.parseOutline (opmlToTree (theXml));"/>
+					<outline text=""/>
+					<outline text="const theTrace = [];"/>
+					<outline text="const verbs = makeDryVerbs (theTrace);"/>
+					<outline text=""/>
+					<outline text="const environment = evaluate.makeEnvironment (theRealOdb, verbs, theTrace);"/>
+					<outline text="environment.parseScript = function (theLines) {">
+						<outline text="return (parse.parseOutline (parse.linesToTree (theLines)));"/>
+						<outline text="};"/>
+						</outline>
+					<outline text="environment.resolveExternalScript = resolveExternalScript;"/>
+					<outline text="environment.frames.push ({vars: {}});"/>
+					<outline text=""/>
+					<outline text="try {">
+						<outline text="evaluate.evaluate (theStatements, environment);"/>
+						<outline text="if (theTrace.length === 0) {">
+							<outline text="const handlerName = fname.replace (/\.opml$/, &quot;&quot;);"/>
+							<outline text="const handlerKey = evaluate.findKey (environment.frames [0].vars, handlerName);"/>
+							<outline text="if (handlerKey !== undefined) {">
+								<outline text="evaluate.evaluate ([{op: &quot;expression&quot;, expr: {op: &quot;call&quot;, fn: {op: &quot;id&quot;, name: handlerKey}, args: []}}], environment);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="}"/>
+							</outline>
+						<outline text="ctOk++;"/>
+						<outline text="}"/>
+						</outline>
+					<outline text="catch (err) {">
+						<outline text="ctFailed++;"/>
+						<outline text="failures.push ({script: fname, message: err.message, ctCallsBeforeFailure: theTrace.length});"/>
+						<outline text="}"/>
+						</outline>
+					<outline text="});"/>
+					</outline>
+				<outline text=""/>
+				<outline text="const categories = {};"/>
+				<outline text="failures.forEach (function (failure) {">
+					<outline text="const key = failure.message.replace (/&quot;[^&quot;]*&quot;/g, &quot;\&quot;...\&quot;&quot;).replace (/ of [A-Za-z0-9_.]+ /, &quot; of ... &quot;).replace (/call [A-Za-z0-9_.]+ /, &quot;call ... &quot;);"/>
+					<outline text="if (categories [key] === undefined) {">
+						<outline text="categories [key] = [];"/>
+						<outline text="}"/>
+						</outline>
+					<outline text="categories [key].push (failure.script);"/>
+					<outline text="});"/>
+					</outline>
+				<outline text=""/>
+				<outline text="fs.writeFileSync (pathReport, JSON.stringify ({ctOk, ctFailed, categories, failures}, undefined, &quot;\t&quot;));"/>
+				<outline text=""/>
+				<outline text="console.log (&quot;ran clean: &quot; + ctOk + &quot; of &quot; + (ctOk + ctFailed));"/>
+				<outline text="Object.keys (categories).forEach (function (key) {">
+					<outline text="console.log (&quot;[&quot; + categories [key].length + &quot;] &quot; + key + &quot; -- e.g. &quot; + categories [key] [0]);"/>
+					<outline text="});"/>
+					</outline>
+				</outline>
+			<outline text="code/parseAll.js">
+				<outline text="/*  The parse-rate metric: run the UserTalk parser over all 361 build">
+					<outline text="scripts, tally clean parses and categorized failures."/>
+					<outline text=""/>
+					<outline text="by CC, 7/27/26 */"/>
+					</outline>
+				<outline text=""/>
+				<outline text="const fs = require (&quot;fs&quot;);"/>
+				<outline text="const parse = require (&quot;./parse.js&quot;);"/>
+				<outline text=""/>
+				<outline text="const folderBuildScripts = &quot;/Users/davewiner/Claude/daveMigrates/usertalk build scripts&quot;;"/>
+				<outline text="const pathReport = &quot;/Users/davewiner/Claude/usertalk/misc/reports/parseReport.json&quot;;"/>
+				<outline text=""/>
+				<outline text="function unescapeXml (theString) {">
+					<outline text="return (theString">
+						<outline text=".replace (/&amp;lt;/g, &quot;&lt;&quot;)"/>
+						<outline text=".replace (/&amp;gt;/g, &quot;&gt;&quot;)"/>
+						<outline text=".replace (/&amp;quot;/g, &quot;\&quot;&quot;)"/>
+						<outline text=".replace (/&amp;apos;/g, &quot;'&quot;)"/>
+						<outline text=".replace (/&amp;amp;/g, &quot;&amp;&quot;));"/>
+						</outline>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="function opmlToTree (theXml) { //an array of {text, subs}, comment subtrees excluded">
+					<outline text=""/>
+					<outline text="const root = {text: &quot;&quot;, subs: []};"/>
+					<outline text="const stack = [root];"/>
+					<outline text="var depthSkip = -1;"/>
+					<outline text="var depth = 0;"/>
+					<outline text=""/>
+					<outline text="const tagPattern = /&lt;outline\b([^&gt;]*?)(\/?)&gt;|&lt;\/outline&gt;/g;"/>
+					<outline text="var match;"/>
+					<outline text="while ((match = tagPattern.exec (theXml)) !== null) {">
+						<outline text="if (match [0] === &quot;&lt;/outline&gt;&quot;) {">
+							<outline text="depth--;"/>
+							<outline text="if ((depthSkip &gt;= 0) &amp;&amp; (depth &lt;= depthSkip)) {">
+								<outline text="depthSkip = -1;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="stack.length = depth + 1;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="else {">
+							<outline text="const attributes = match [1];"/>
+							<outline text="const flSelfClosing = match [2] === &quot;/&quot;;"/>
+							<outline text="const flComment = /isComment=&quot;true&quot;/.test (attributes);"/>
+							<outline text="const textMatch = attributes.match (/text=&quot;([^&quot;]*)&quot;/);"/>
+							<outline text="var text = &quot;&quot;;"/>
+							<outline text="if (textMatch !== null) {">
+								<outline text="text = unescapeXml (textMatch [1]);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="if (depthSkip === -1) {">
+								<outline text="if (flComment) {">
+									<outline text="if (!flSelfClosing) {">
+										<outline text="depthSkip = depth;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="else {">
+									<outline text="const node = {text, subs: []};"/>
+									<outline text="stack [depth].subs.push (node);"/>
+									<outline text="if (!flSelfClosing) {">
+										<outline text="stack [depth + 1] = node;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="}"/>
+								</outline>
+							<outline text="if (!flSelfClosing) {">
+								<outline text="depth++;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="}"/>
+							</outline>
+						<outline text="}"/>
+						</outline>
+					<outline text="return (root.subs);"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="var ctClean = 0, ctFailed = 0;"/>
+				<outline text="const failures = [];"/>
+				<outline text=""/>
+				<outline text="fs.readdirSync (folderBuildScripts).forEach (function (fname) {">
+					<outline text="if (!fname.endsWith (&quot;.opml&quot;)) {">
+						<outline text="return;"/>
+						<outline text="}"/>
+						</outline>
+					<outline text="const theXml = fs.readFileSync (folderBuildScripts + &quot;/&quot; + fname, &quot;latin1&quot;);"/>
+					<outline text="const theTree = opmlToTree (theXml);"/>
+					<outline text="try {">
+						<outline text="parse.parseOutline (theTree);"/>
+						<outline text="ctClean++;"/>
+						<outline text="}"/>
+						</outline>
+					<outline text="catch (err) {">
+						<outline text="ctFailed++;"/>
+						<outline text="failures.push ({script: fname, message: err.message});"/>
+						<outline text="}"/>
+						</outline>
+					<outline text="});"/>
+					</outline>
+				<outline text=""/>
+				<outline text="const categories = {};"/>
+				<outline text="failures.forEach (function (failure) {">
+					<outline text="const key = failure.message.replace (/&quot;[^&quot;]*&quot;/g, &quot;\&quot;...\&quot;&quot;); //group by message shape"/>
+					<outline text="if (categories [key] === undefined) {">
+						<outline text="categories [key] = [];"/>
+						<outline text="}"/>
+						</outline>
+					<outline text="categories [key].push (failure.script);"/>
+					<outline text="});"/>
+					</outline>
+				<outline text=""/>
+				<outline text="fs.writeFileSync (pathReport, JSON.stringify ({ctClean, ctFailed, categories, failures}, undefined, &quot;\t&quot;));"/>
+				<outline text=""/>
+				<outline text="console.log (&quot;clean: &quot; + ctClean + &quot; of &quot; + (ctClean + ctFailed));"/>
+				<outline text="Object.keys (categories).forEach (function (key) {">
+					<outline text="console.log (&quot;[&quot; + categories [key].length + &quot;] &quot; + key + &quot; -- e.g. &quot; + categories [key] [0]);"/>
+					<outline text="});"/>
+					</outline>
+				</outline>
+			<outline text="code/parseSuite.js">
+				<outline text="/*  Parse every script in the nodeEditor suite -- the 838 scripts the">
+					<outline text="build scripts call into -- as a harder test of the parser."/>
+					<outline text=""/>
+					<outline text="by CC, 7/27/26 */"/>
+					</outline>
+				<outline text=""/>
+				<outline text="const fs = require (&quot;fs&quot;);"/>
+				<outline text="const parse = require (&quot;./parse.js&quot;);"/>
+				<outline text=""/>
+				<outline text="const pathSuite = &quot;/Users/davewiner/Claude/daveMigrates/misc/nodeEditor.json&quot;;"/>
+				<outline text="const pathReport = &quot;/Users/davewiner/Claude/usertalk/misc/reports/parseSuiteReport.json&quot;;"/>
+				<outline text=""/>
+				<outline text="function linesToTree (theLines) { //flat {level, text, flComment} lines to {text, subs}, comments excluded">
+					<outline text="const root = {text: &quot;&quot;, subs: []};"/>
+					<outline text="const stack = [root];"/>
+					<outline text="var depthSkip = -1;"/>
+					<outline text="theLines.forEach (function (line) {">
+						<outline text="if ((depthSkip &gt;= 0) &amp;&amp; (line.level &gt; depthSkip)) {">
+							<outline text="return;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="depthSkip = -1;"/>
+						<outline text="if (line.flComment) {">
+							<outline text="depthSkip = line.level;"/>
+							<outline text="return;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="const node = {text: line.text, subs: []};"/>
+						<outline text="stack [line.level].subs.push (node);"/>
+						<outline text="stack [line.level + 1] = node;"/>
+						<outline text="stack.length = line.level + 2;"/>
+						<outline text="});"/>
+						</outline>
+					<outline text="return (root.subs);"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="function walkTableForScripts (theTable, thePath, visit) {">
+					<outline text="Object.keys (theTable).forEach (function (name) {">
+						<outline text="const value = theTable [name];"/>
+						<outline text="if ((typeof value === &quot;object&quot;) &amp;&amp; (value !== null)) {">
+							<outline text="if (value.type === &quot;table&quot;) {">
+								<outline text="walkTableForScripts (value.value, thePath + name + &quot;.&quot;, visit);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="else {">
+								<outline text="if ((value.type === &quot;script&quot;) &amp;&amp; (value.lines !== undefined)) {">
+									<outline text="visit (thePath + name, value.lines);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="}"/>
+								</outline>
+							<outline text="}"/>
+							</outline>
+						<outline text="});"/>
+						</outline>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="var ctClean = 0, ctFailed = 0;"/>
+				<outline text="const failures = [];"/>
+				<outline text=""/>
+				<outline text="const theSuite = JSON.parse (fs.readFileSync (pathSuite, &quot;utf8&quot;));"/>
+				<outline text="walkTableForScripts (theSuite, &quot;&quot;, function (thePath, theLines) {">
+					<outline text="try {">
+						<outline text="parse.parseOutline (linesToTree (theLines));"/>
+						<outline text="ctClean++;"/>
+						<outline text="}"/>
+						</outline>
+					<outline text="catch (err) {">
+						<outline text="ctFailed++;"/>
+						<outline text="failures.push ({script: thePath, message: err.message});"/>
+						<outline text="}"/>
+						</outline>
+					<outline text="});"/>
+					</outline>
+				<outline text=""/>
+				<outline text="const categories = {};"/>
+				<outline text="failures.forEach (function (failure) {">
+					<outline text="const key = failure.message.replace (/&quot;[^&quot;]*&quot;/g, &quot;\&quot;...\&quot;&quot;);"/>
+					<outline text="if (categories [key] === undefined) {">
+						<outline text="categories [key] = [];"/>
+						<outline text="}"/>
+						</outline>
+					<outline text="categories [key].push (failure.script);"/>
+					<outline text="});"/>
+					</outline>
+				<outline text=""/>
+				<outline text="fs.writeFileSync (pathReport, JSON.stringify ({ctClean, ctFailed, categories, failures}, undefined, &quot;\t&quot;));"/>
+				<outline text=""/>
+				<outline text="console.log (&quot;clean: &quot; + ctClean + &quot; of &quot; + (ctClean + ctFailed));"/>
+				<outline text="Object.keys (categories).forEach (function (key) {">
+					<outline text="console.log (&quot;[&quot; + categories [key].length + &quot;] &quot; + key + &quot; -- e.g. &quot; + categories [key] [0]);"/>
+					<outline text="});"/>
+					</outline>
+				</outline>
+			<outline text="code/failingLines.js">
+				<outline text="//Print the first few failing LINES per failure shape, with their text. by CC, 7/27/26"/>
+				<outline text=""/>
+				<outline text="const fs = require (&quot;fs&quot;);"/>
+				<outline text="const parse = require (&quot;./parse.js&quot;);"/>
+				<outline text=""/>
+				<outline text="const folderBuildScripts = &quot;/Users/davewiner/Claude/daveMigrates/usertalk build scripts&quot;;"/>
+				<outline text=""/>
+				<outline text="function unescapeXml (theString) {">
+					<outline text="return (theString">
+						<outline text=".replace (/&amp;lt;/g, &quot;&lt;&quot;)"/>
+						<outline text=".replace (/&amp;gt;/g, &quot;&gt;&quot;)"/>
+						<outline text=".replace (/&amp;quot;/g, &quot;\&quot;&quot;)"/>
+						<outline text=".replace (/&amp;apos;/g, &quot;'&quot;)"/>
+						<outline text=".replace (/&amp;amp;/g, &quot;&amp;&quot;));"/>
+						</outline>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="function opmlToTree (theXml) {">
+					<outline text="const root = {text: &quot;&quot;, subs: []};"/>
+					<outline text="const stack = [root];"/>
+					<outline text="var depthSkip = -1;"/>
+					<outline text="var depth = 0;"/>
+					<outline text="const tagPattern = /&lt;outline\b([^&gt;]*?)(\/?)&gt;|&lt;\/outline&gt;/g;"/>
+					<outline text="var match;"/>
+					<outline text="while ((match = tagPattern.exec (theXml)) !== null) {">
+						<outline text="if (match [0] === &quot;&lt;/outline&gt;&quot;) {">
+							<outline text="depth--;"/>
+							<outline text="if ((depthSkip &gt;= 0) &amp;&amp; (depth &lt;= depthSkip)) {">
+								<outline text="depthSkip = -1;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="stack.length = depth + 1;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="else {">
+							<outline text="const attributes = match [1];"/>
+							<outline text="const flSelfClosing = match [2] === &quot;/&quot;;"/>
+							<outline text="const flComment = /isComment=&quot;true&quot;/.test (attributes);"/>
+							<outline text="const textMatch = attributes.match (/text=&quot;([^&quot;]*)&quot;/);"/>
+							<outline text="var text = &quot;&quot;;"/>
+							<outline text="if (textMatch !== null) {">
+								<outline text="text = unescapeXml (textMatch [1]);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="if (depthSkip === -1) {">
+								<outline text="if (flComment) {">
+									<outline text="if (!flSelfClosing) {">
+										<outline text="depthSkip = depth;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="else {">
+									<outline text="const node = {text, subs: []};"/>
+									<outline text="stack [depth].subs.push (node);"/>
+									<outline text="if (!flSelfClosing) {">
+										<outline text="stack [depth + 1] = node;"/>
+										<outline text="}"/>
+										</outline>
+									<outline text="}"/>
+									</outline>
+								<outline text="}"/>
+								</outline>
+							<outline text="if (!flSelfClosing) {">
+								<outline text="depth++;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="}"/>
+							</outline>
+						<outline text="}"/>
+						</outline>
+					<outline text="return (root.subs);"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="const seen = {};"/>
+				<outline text=""/>
+				<outline text="fs.readdirSync (folderBuildScripts).forEach (function (fname) {">
+					<outline text="if (!fname.endsWith (&quot;.opml&quot;)) {">
+						<outline text="return;"/>
+						<outline text="}"/>
+						</outline>
+					<outline text="const theXml = fs.readFileSync (folderBuildScripts + &quot;/&quot; + fname, &quot;latin1&quot;);"/>
+					<outline text="const theTree = opmlToTree (theXml);"/>
+					<outline text=""/>
+					<outline text="function walk (nodes) {">
+						<outline text="nodes.forEach (function (node) {">
+							<outline text="try {">
+								<outline text="parse.parseLine (node.text);"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="catch (err) {">
+								<outline text="const key = err.message.replace (/&quot;[^&quot;]*&quot;/g, &quot;\&quot;...\&quot;&quot;);"/>
+								<outline text="if (seen [key] === undefined) {">
+									<outline text="seen [key] = 0;"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="if (seen [key] &lt; 4) {">
+									<outline text="console.log (&quot;[&quot; + fname + &quot;] &quot; + err.message);"/>
+									<outline text="console.log (&quot;    LINE: &quot; + node.text);"/>
+									<outline text="}"/>
+									</outline>
+								<outline text="seen [key]++;"/>
+								<outline text="}"/>
+								</outline>
+							<outline text="walk (node.subs);"/>
+							<outline text="});"/>
+							</outline>
+						<outline text="}"/>
+						</outline>
+					<outline text="walk (theTree);"/>
+					<outline text="});"/>
+					</outline>
+				<outline text=""/>
+				<outline text="console.log (&quot;&quot;);"/>
+				<outline text="Object.keys (seen).forEach (function (key) {">
+					<outline text="console.log (seen [key] + &quot;x &quot; + key);"/>
+					<outline text="});"/>
+					</outline>
+				</outline>
+			<outline text="code/suiteFailingLines.js">
+				<outline text="//Show the exact failing line texts in the six failing suite scripts. by CC, 7/27/26"/>
+				<outline text=""/>
+				<outline text="const fs = require (&quot;fs&quot;);"/>
+				<outline text="const parse = require (&quot;./parse.js&quot;);"/>
+				<outline text=""/>
+				<outline text="const theSuite = JSON.parse (fs.readFileSync (&quot;/Users/davewiner/Claude/daveMigrates/misc/nodeEditor.json&quot;, &quot;utf8&quot;));"/>
+				<outline text=""/>
+				<outline text="function getAddress (theTable, thePath) {">
+					<outline text="var current = theTable;"/>
+					<outline text="thePath.split (&quot;.&quot;).forEach (function (part) {">
+						<outline text="if ((current !== undefined) &amp;&amp; (current.type === &quot;table&quot;)) {">
+							<outline text="current = current.value;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="if (current !== undefined) {">
+							<outline text="current = current [part];"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="});"/>
+						</outline>
+					<outline text="return (current);"/>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="const scripts = [">
+					<outline text="&quot;nodeEditorSuite.chatgpt.letsWatchThatStinkingFolderx&quot;,"/>
+					<outline text="&quot;nodeEditorSuite.imageBrowser.everyNight&quot;,"/>
+					<outline text="&quot;nodeEditorSuite.utilities.nightlyGithubUpload&quot;,"/>
+					<outline text="&quot;nodeEditorSuite.utilities.nightlyRootsBackup&quot;,"/>
+					<outline text="&quot;nodeEditorSuite.utilities.testXmlRpcMailService&quot;"/>
+					<outline text="];"/>
+					</outline>
+				<outline text=""/>
+				<outline text="scripts.forEach (function (thePath) {">
+					<outline text="const theScript = getAddress (theSuite, thePath);"/>
+					<outline text="theScript.lines.forEach (function (line, ix) {">
+						<outline text="if (line.flComment) {">
+							<outline text="return;"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="try {">
+							<outline text="parse.parseLine (line.text);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="catch (err) {">
+							<outline text="console.log (thePath + &quot; line &quot; + ix + &quot;: &quot; + JSON.stringify (line.text));"/>
+							<outline text="console.log (&quot;    &quot; + err.message);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="});"/>
+						</outline>
+					<outline text="});"/>
+					</outline>
+				</outline>
+			<outline text="code/stageBelter.js">
+				<outline text="/*  Stage the interpreter's sandbox: the belter files rendered from the">
+					<outline text="ODB become the nodeeditor source folder buildBelter copies from --"/>
+					<outline text="the same chain Frontier runs: outline -&gt; files -&gt; build script."/>
+					<outline text=""/>
+					<outline text="by CC, 7/27/26 */"/>
+					</outline>
+				<outline text=""/>
+				<outline text="const fs = require (&quot;fs&quot;);"/>
+				<outline text="const path = require (&quot;path&quot;);"/>
+				<outline text=""/>
+				<outline text="const folderRendered = &quot;/Users/davewiner/Claude/usertalk/misc/research/sandbox/render/belter&quot;;"/>
+				<outline text="const folderSource = &quot;/Users/davewiner/Claude/usertalk/misc/sandbox/usertalk/nodeeditor/scripting.com-code-belter&quot;;"/>
+				<outline text=""/>
+				<outline text="function copyTree (fromFolder, toFolder) {">
+					<outline text="fs.mkdirSync (toFolder, {recursive: true});"/>
+					<outline text="fs.readdirSync (fromFolder).forEach (function (fname) {">
+						<outline text="const fromPath = path.join (fromFolder, fname);"/>
+						<outline text="const toPath = path.join (toFolder, fname);"/>
+						<outline text="if (fs.statSync (fromPath).isDirectory ()) {">
+							<outline text="copyTree (fromPath, toPath);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="else {">
+							<outline text="fs.copyFileSync (fromPath, toPath);"/>
+							<outline text="}"/>
+							</outline>
+						<outline text="});"/>
+						</outline>
+					<outline text="}"/>
+					</outline>
+				<outline text=""/>
+				<outline text="copyTree (folderRendered, folderSource);"/>
+				<outline text="console.log (&quot;staged &quot; + folderSource);"/>
+				</outline>
+			<outline text="code/pathmap.json">
+				<outline text="{">
+					<outline text="&quot;helpers&quot;: {">
+						<outline text="&quot;getFolder&quot;: &quot;Macintosh HD:Users:davewiner:Dropbox:public:misc:nodeeditor:&quot;,"/>
+						<outline text="&quot;getAllServersFolder&quot;: &quot;Macintosh HD:Users:davewiner:allservers:&quot;,"/>
+						<outline text="&quot;getGitHubFolder&quot;: &quot;Macintosh HD:Users:davewiner:GitHub:&quot;"/>
+						</outline>
+					<outline text="},"/>
+					<outline text="&quot;prefs&quot;: {">
+						<outline text="&quot;githubfolder&quot;: &quot;Macintosh HD:Users:davewiner:GitHub:&quot;,"/>
+						<outline text="&quot;dropboxfolder&quot;: &quot;Macintosh HD:Users:davewiner:Dropbox:&quot;"/>
+						</outline>
+					<outline text="},"/>
+					<outline text="&quot;prefixes&quot;: {">
+						<outline text="&quot;Macintosh HD:Users:davewiner:Dropbox:public:misc:nodeeditor&quot;: &quot;/Users/davewiner/Claude/usertalk/misc/sandbox/usertalk/nodeeditor&quot;,"/>
+						<outline text="&quot;Macintosh HD:Users:davewiner:GitHub&quot;: &quot;/Users/davewiner/Claude/usertalk/misc/sandbox/usertalk/github&quot;,"/>
+						<outline text="&quot;Macintosh HD:Users:davewiner:allservers&quot;: &quot;/Users/davewiner/Claude/usertalk/misc/sandbox/usertalk/allservers&quot;,"/>
+						<outline text="&quot;Macintosh HD:Users:davewiner:Dropbox&quot;: &quot;/Users/davewiner/Claude/usertalk/misc/sandbox/usertalk/dropbox&quot;"/>
+						</outline>
+					<outline text="}"/>
+					</outline>
+				<outline text="}"/>
+				</outline>
+			<outline text="examples/readme.md">
+				<outline text="# Examples"/>
+				<outline text=""/>
+				<outline text="Working UserTalk programs you can run with the interpreter, each in its own folder with a readme."/>
+				<outline text=""/>
+				<outline text="1. [hello](hello/) -- the smallest UserTalk program: a handler, a default parameter, and the test-code bundle that calls it."/>
+				</outline>
+			<outline text="examples/hello/readme.md">
+				<outline text="# hello"/>
+				<outline text=""/>
+				<outline text="The smallest UserTalk program -- a handler with a default parameter, and the bundle at the bottom that calls it, Frontier's test-code convention."/>
+				<outline text=""/>
+				<outline text="To run it, from the top of this repo:"/>
+				<outline text=""/>
+				<outline text="```"/>
+				<outline text="node code/run.js examples/hello/hello.opml"/>
+				<outline text="```"/>
+				<outline text=""/>
+				<outline text="And it says:"/>
+				<outline text=""/>
+				<outline text="```"/>
+				<outline text="Hello, World!"/>
+				<outline text="Hello, Dave!"/>
+				<outline text="examples/hello/hello.opml: 2 verb calls (ok)"/>
+				<outline text="```"/>
+				<outline text=""/>
+				<outline text="The script is an outline, stored as OPML -- in Frontier you'd be looking at it in the outliner, each line a node, the handler's body indented under it."/>
+				</outline>
+			<outline text="examples/hello/hello.opml">
+				<outline text="&lt;?xml version=&quot;1.0&quot;?&gt;"/>
+				<outline text="&lt;opml version=&quot;2.0&quot;&gt;">
+					<outline text="&lt;head&gt;">
+						<outline text="&lt;title&gt;hello&lt;/title&gt;"/>
+						<outline text="&lt;/head&gt;"/>
+						</outline>
+					<outline text="&lt;body&gt;">
+						<outline text="&lt;outline text=&quot;on hello (name = &amp;quot;World&amp;quot;)&quot;&gt;">
+							<outline text="&lt;outline text=&quot;msg (&amp;quot;Hello, &amp;quot; + name + &amp;quot;!&amp;quot;)&quot;/&gt;"/>
+							<outline text="&lt;/outline&gt;"/>
+							</outline>
+						<outline text="&lt;outline text=&quot;bundle //test code&quot;&gt;">
+							<outline text="&lt;outline text=&quot;hello ()&quot;/&gt;"/>
+							<outline text="&lt;outline text=&quot;hello (&amp;quot;Dave&amp;quot;)&quot;/&gt;"/>
+							<outline text="&lt;/outline&gt;"/>
+							</outline>
+						<outline text="&lt;/body&gt;"/>
+						</outline>
+					<outline text="&lt;/opml&gt;"/>
+					</outline>
+				</outline>
+			</outline>
+		</body>
+	</opml>

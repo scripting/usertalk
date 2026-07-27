@@ -1,6 +1,6 @@
 /*  Parse every script in the nodeEditor suite -- the 838 scripts the
 	build scripts call into -- as a harder test of the parser.
-
+	
 	by CC, 7/27/26 */
 
 const fs = require ("fs");

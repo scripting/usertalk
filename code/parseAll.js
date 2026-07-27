@@ -1,6 +1,6 @@
 /*  The parse-rate metric: run the UserTalk parser over all 361 build
 	scripts, tally clean parses and categorized failures.
-
+	
 	by CC, 7/27/26 */
 
 const fs = require ("fs");
@@ -19,12 +19,12 @@ function unescapeXml (theString) {
 	}
 
 function opmlToTree (theXml) { //an array of {text, subs}, comment subtrees excluded
-
+	
 	const root = {text: "", subs: []};
 	const stack = [root];
 	var depthSkip = -1;
 	var depth = 0;
-
+	
 	const tagPattern = /<outline\b([^>]*?)(\/?)>|<\/outline>/g;
 	var match;
 	while ((match = tagPattern.exec (theXml)) !== null) {

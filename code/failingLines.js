@@ -68,7 +68,7 @@ fs.readdirSync (folderBuildScripts).forEach (function (fname) {
 		}
 	const theXml = fs.readFileSync (folderBuildScripts + "/" + fname, "latin1");
 	const theTree = opmlToTree (theXml);
-
+	
 	function walk (nodes) {
 		nodes.forEach (function (node) {
 			try {

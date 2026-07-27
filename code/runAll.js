@@ -1,7 +1,7 @@
 /*  Execute all 361 build scripts under the interpreter in dry-run mode:
 	file verbs answer without touching disk, so what's being measured is
 	the language -- does every script RUN, not just parse.
-
+	
 	by CC, 7/27/26 */
 
 const fs = require ("fs");
@@ -79,12 +79,12 @@ theRealOdb.user.prefs.dropboxfolder = thePathMap.prefs.dropboxfolder;
 console.log ("odb loaded");
 
 function makeDryVerbs (theTrace) {
-
+	
 	const made = verbsMaker.makeVerbs (thePathMap, theTrace);
 	const verbs = made.verbs;
-
+	
 	//file verbs answer plausibly without disk
-
+	
 	verbs ["file.copy"] = function (args) {
 		return (true);
 		};
@@ -125,7 +125,7 @@ function makeDryVerbs (theTrace) {
 	verbs ["file.rename"] = function (args) {
 		return (true);
 		};
-
+	
 	return (verbs);
 	}
 
@@ -158,20 +158,20 @@ fs.readdirSync (folderBuildScripts).forEach (function (fname) {
 	if (!fname.endsWith (".opml")) {
 		return;
 		}
-
+	
 	const theXml = fs.readFileSync (folderBuildScripts + "/" + fname, "latin1");
 	const theStatements = parse.parseOutline (opmlToTree (theXml));
-
+	
 	const theTrace = [];
 	const verbs = makeDryVerbs (theTrace);
-
+	
 	const environment = evaluate.makeEnvironment (theRealOdb, verbs, theTrace);
 	environment.parseScript = function (theLines) {
 		return (parse.parseOutline (parse.linesToTree (theLines)));
 		};
 	environment.resolveExternalScript = resolveExternalScript;
 	environment.frames.push ({vars: {}});
-
+	
 	try {
 		evaluate.evaluate (theStatements, environment);
 		if (theTrace.length === 0) {

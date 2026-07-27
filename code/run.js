@@ -1,12 +1,12 @@
 /*  Run one UserTalk script outline under the interpreter.
-
+	
 	node run.js path/to/script.opml [--trace]
 	node run.js buildBelter.opml [--trace]
-
+	
 	A path that exists is run as given; a bare name is looked up in the
 	build-scripts folder. Binds user.prefs from the path map, runs the
 	top-level handler, prints every verb call.
-
+	
 	by CC, 7/27/26 */
 
 const fs = require ("fs");
@@ -112,7 +112,7 @@ environment.frames.push ({vars: {}});
 var flFailed = false;
 try {
 	evaluate.evaluate (theStatements, environment);
-
+	
 	if (theTrace.length === 0) {
 		const handlerName = pathScript.split ("/").pop ().replace (/\.opml$/, ""); //7/27/26 by CC -- the script's own name, wherever it lives
 		const handlerKey = evaluate.findKey (environment.frames [0].vars, handlerName);

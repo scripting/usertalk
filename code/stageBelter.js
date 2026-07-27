@@ -1,7 +1,7 @@
 /*  Stage the interpreter's sandbox: the belter files rendered from the
 	ODB become the nodeeditor source folder buildBelter copies from --
 	the same chain Frontier runs: outline -> files -> build script.
-
+	
 	by CC, 7/27/26 */
 
 const fs = require ("fs");
