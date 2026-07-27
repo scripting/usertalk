@@ -1,0 +1,17 @@
+{
+	"helpers": {
+		"getFolder": "Macintosh HD:Users:davewiner:Dropbox:public:misc:nodeeditor:",
+		"getAllServersFolder": "Macintosh HD:Users:davewiner:allservers:",
+		"getGitHubFolder": "Macintosh HD:Users:davewiner:GitHub:"
+	},
+	"prefs": {
+		"githubfolder": "Macintosh HD:Users:davewiner:GitHub:",
+		"dropboxfolder": "Macintosh HD:Users:davewiner:Dropbox:"
+	},
+	"prefixes": {
+		"Macintosh HD:Users:davewiner:Dropbox:public:misc:nodeeditor": "/Users/davewiner/Claude/usertalk/misc/sandbox/usertalk/nodeeditor",
+		"Macintosh HD:Users:davewiner:GitHub": "/Users/davewiner/Claude/usertalk/misc/sandbox/usertalk/github",
+		"Macintosh HD:Users:davewiner:allservers": "/Users/davewiner/Claude/usertalk/misc/sandbox/usertalk/allservers",
+		"Macintosh HD:Users:davewiner:Dropbox": "/Users/davewiner/Claude/usertalk/misc/sandbox/usertalk/dropbox"
+	}
+}

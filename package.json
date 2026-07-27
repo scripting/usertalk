@@ -1,0 +1,12 @@
+{
+	"name": "usertalk",
+	"description": "The UserTalk language, running on Node -- parser, evaluator, and verb library for the scripting language of UserLand Frontier.",
+	"author": "Dave Winer <dave@scripting.com>",
+	"version": "0.1.0",
+	"main": "usertalk.js",
+	"files": [
+		"readme.md"
+		],
+	"dependencies": {
+		}
+	}
