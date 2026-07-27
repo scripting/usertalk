@@ -2613,7 +2613,7 @@
 				<outline text="const verbsMaker = require (&quot;./verbs.js&quot;);"/>
 				<outline text=""/>
 				<outline text="const folderBuildScripts = &quot;/Users/davewiner/Claude/daveMigrates/usertalk build scripts&quot;;"/>
-				<outline text="const pathPathMap = &quot;/Users/davewiner/Claude/usertalk/code/pathmap.json&quot;;"/>
+				<outline text="const pathPathMap = require (&quot;path&quot;).join (__dirname, &quot;pathmap.json&quot;); //7/27/26 by CC -- next to the code, wherever the repo lives"/>
 				<outline text=""/>
 				<outline text="const scriptName = process.argv [2];"/>
 				<outline text="const flTrace = process.argv.indexOf (&quot;--trace&quot;) !== -1;"/>
@@ -2787,7 +2787,7 @@
 				<outline text="const verbsMaker = require (&quot;./verbs.js&quot;);"/>
 				<outline text=""/>
 				<outline text="const folderBuildScripts = &quot;/Users/davewiner/Claude/daveMigrates/usertalk build scripts&quot;;"/>
-				<outline text="const pathPathMap = &quot;/Users/davewiner/Claude/usertalk/code/pathmap.json&quot;;"/>
+				<outline text="const pathPathMap = require (&quot;path&quot;).join (__dirname, &quot;pathmap.json&quot;); //7/27/26 by CC -- next to the code, wherever the repo lives"/>
 				<outline text="const pathReport = &quot;/Users/davewiner/Claude/usertalk/misc/reports/runAllReport.json&quot;;"/>
 				<outline text=""/>
 				<outline text="function unescapeXml (theString) {">

@@ -10,7 +10,7 @@ const evaluate = require ("./evaluate.js");
 const verbsMaker = require ("./verbs.js");
 
 const folderBuildScripts = "/Users/davewiner/Claude/daveMigrates/usertalk build scripts";
-const pathPathMap = "/Users/davewiner/Claude/usertalk/code/pathmap.json";
+const pathPathMap = require ("path").join (__dirname, "pathmap.json"); //7/27/26 by CC -- next to the code, wherever the repo lives
 const pathReport = "/Users/davewiner/Claude/usertalk/misc/reports/runAllReport.json";
 
 function unescapeXml (theString) {
