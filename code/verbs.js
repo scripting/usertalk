@@ -258,8 +258,9 @@ function makeVerbs (thePathMap, theTrace) {
 		return (String (theValue));
 		};
 
-	verbs ["msg"] = function (args) {
-		return (true); //the trace line is the message
+	verbs ["msg"] = function (args) { //7/27/26 by CC -- msg speaks: Frontier showed it to the user, we print it
+		console.log (String (args [0]));
+		return (true);
 		};
 
 	verbs ["new"] = function (args) { //new (tabletype, @adr) -- create an empty value at the address

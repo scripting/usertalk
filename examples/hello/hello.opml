@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<opml version="2.0">
+	<head>
+		<title>hello</title>
+		</head>
+	<body>
+		<outline text="on hello (name = &quot;World&quot;)">
+			<outline text="msg (&quot;Hello, &quot; + name + &quot;!&quot;)"/>
+			</outline>
+		<outline text="bundle //test code">
+			<outline text="hello ()"/>
+			<outline text="hello (&quot;Dave&quot;)"/>
+			</outline>
+		</body>
+	</opml>

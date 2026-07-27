@@ -23,19 +23,21 @@ Stubs, loud ones -- every unimplemented verb announces itself, nothing silently 
 ### Running a script
 
 ```
-node run.js buildBelter.opml --trace
+node code/run.js examples/hello/hello.opml
 ```
 
-Runs one script outline with every verb call traced. `runAll.js` runs a whole folder of scripts and writes a report naming exactly which verbs each failing script needs -- that report is the work list.
+Runs one script outline; add `--trace` to see every verb call. Start in [examples](examples/) -- each one is a working UserTalk program with a readme. `runAll.js` runs a whole folder of scripts and writes a report naming exactly which verbs each failing script needs -- that report is the work list.
 
-### The files
+### The repo
 
-- **parse.js** -- tokenizer and recursive-descent parser, grammar from langparser.y.
-- **evaluate.js** -- the evaluator, semantics from langevaluate.c.
-- **verbs.js** -- the verb library.
-- **odbLoader.js** -- loads .root and .fttb files into the namespace via frontierOdb.
-- **usertalk.js** -- the package front door.
-- **run.js / runAll.js / parseAll.js / parseSuite.js** -- runners and corpus tests.
+- **code/** -- the interpreter.
+	- **parse.js** -- tokenizer and recursive-descent parser, grammar from langparser.y.
+	- **evaluate.js** -- the evaluator, semantics from langevaluate.c.
+	- **verbs.js** -- the verb library.
+	- **odbLoader.js** -- loads .root and .fttb files into the namespace via frontierOdb.
+	- **usertalk.js** -- the package front door.
+	- **run.js / runAll.js / parseAll.js / parseSuite.js** -- runners and corpus tests.
+- **examples/** -- working UserTalk programs to run and crib from.
 
 The research run that produced all this -- the report, the verb-surface survey of every verb called across the corpus, and the harness that renders projects from the ODB -- is preserved in misc/research/.
 

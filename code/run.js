@@ -1,9 +1,11 @@
-/*  Run one Frontier build script under the UserTalk interpreter.
+/*  Run one UserTalk script outline under the interpreter.
 
+	node run.js path/to/script.opml [--trace]
 	node run.js buildBelter.opml [--trace]
 
-	Loads the script from the build-scripts folder, binds user.prefs from
-	the path map, runs the top-level handler, prints every verb call.
+	A path that exists is run as given; a bare name is looked up in the
+	build-scripts folder. Binds user.prefs from the path map, runs the
+	top-level handler, prints every verb call.
 
 	by CC, 7/27/26 */
 
@@ -13,7 +15,7 @@ const evaluate = require ("./evaluate.js");
 const verbsMaker = require ("./verbs.js");
 
 const folderBuildScripts = "/Users/davewiner/Claude/daveMigrates/usertalk build scripts";
-const pathPathMap = "/Users/davewiner/Claude/usertalk/pathmap.json";
+const pathPathMap = "/Users/davewiner/Claude/usertalk/code/pathmap.json";
 
 const scriptName = process.argv [2];
 const flTrace = process.argv.indexOf ("--trace") !== -1;
@@ -79,7 +81,11 @@ function opmlToTree (theXml) {
 	}
 
 const thePathMap = JSON.parse (fs.readFileSync (pathPathMap, "utf8"));
-const theXml = fs.readFileSync (folderBuildScripts + "/" + scriptName, "latin1");
+var pathScript = scriptName; //7/27/26 by CC -- a path that exists runs as given, a bare name comes from the build-scripts folder
+if (!fs.existsSync (pathScript)) {
+	pathScript = folderBuildScripts + "/" + scriptName;
+	}
+const theXml = fs.readFileSync (pathScript, "latin1");
 const theStatements = parse.parseOutline (opmlToTree (theXml));
 
 const theTrace = [];
@@ -108,7 +114,7 @@ try {
 	evaluate.evaluate (theStatements, environment);
 
 	if (theTrace.length === 0) {
-		const handlerName = scriptName.replace (/\.opml$/, "");
+		const handlerName = pathScript.split ("/").pop ().replace (/\.opml$/, ""); //7/27/26 by CC -- the script's own name, wherever it lives
 		const handlerKey = evaluate.findKey (environment.frames [0].vars, handlerName);
 		if (handlerKey !== undefined) {
 			evaluate.evaluate ([{op: "expression", expr: {op: "call", fn: {op: "id", name: handlerKey}, args: []}}], environment);
