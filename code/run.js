@@ -1,11 +1,15 @@
 /*  Run one UserTalk script outline under the interpreter.
 	
-	node run.js path/to/script.opml [--trace]
+	node run.js path/to/script.opml [--trace] [--odb folder]
 	node run.js buildBelter.opml [--trace]
 	
 	A path that exists is run as given; a bare name is looked up in the
 	build-scripts folder. Binds user.prefs from the path map, runs the
 	top-level handler, prints every verb call.
+	
+	With --odb, the object database is assembled from the folder by
+	odbHome.js -- drop .root files, fat pages and subfolders in the
+	folder and they become the namespace the script runs in.
 	
 	by CC, 7/27/26 */
 
@@ -13,6 +17,7 @@ const fs = require ("fs");
 const parse = require ("./parse.js");
 const evaluate = require ("./evaluate.js");
 const verbsMaker = require ("./verbs.js");
+const odbHome = require ("./odbHome.js");
 
 const folderBuildScripts = "/Users/davewiner/Claude/daveMigrates/usertalk build scripts";
 const pathPathMap = require ("path").join (__dirname, "pathmap.json"); //7/27/26 by CC -- next to the code, wherever the repo lives
@@ -20,8 +25,18 @@ const pathPathMap = require ("path").join (__dirname, "pathmap.json"); //7/27/26
 const scriptName = process.argv [2];
 const flTrace = process.argv.indexOf ("--trace") !== -1;
 
+var folderOdbHome; //7/27/26 by CC -- set by --odb
+const ixOdbFlag = process.argv.indexOf ("--odb");
+if (ixOdbFlag !== -1) {
+	folderOdbHome = process.argv [ixOdbFlag + 1];
+	if (folderOdbHome === undefined) {
+		console.log ("Can't load the odb because --odb needs a folder path after it.");
+		process.exit (1);
+		}
+	}
+
 if (scriptName === undefined) {
-	console.log ("usage: node run.js buildBelter.opml [--trace]");
+	console.log ("usage: node run.js buildBelter.opml [--trace] [--odb folder]");
 	process.exit (1);
 	}
 
@@ -91,16 +106,33 @@ const theStatements = parse.parseOutline (opmlToTree (theXml));
 const theTrace = [];
 const made = verbsMaker.makeVerbs (thePathMap, theTrace);
 
-const theOdb = {
-	user: {
-		prefs: thePathMap.prefs
-		},
-	scratchpad: {},
-	config: {},
-	system: {}
-	};
+var theOdb;
+if (folderOdbHome === undefined) {
+	theOdb = {
+		user: {
+			prefs: thePathMap.prefs
+			},
+		scratchpad: {},
+		config: {},
+		system: {}
+		};
+	}
+else {
+	theOdb = odbHome.loadFolder (folderOdbHome, function (message) {
+		console.log ("odbHome: " + message);
+		});
+	if (theOdb.user.prefs === undefined) { //the path map's prefs are this machine's values -- they win
+		theOdb.user.prefs = {};
+		}
+	Object.keys (thePathMap.prefs).forEach (function (name) {
+		theOdb.user.prefs [name] = thePathMap.prefs [name];
+		});
+	}
 
 const environment = evaluate.makeEnvironment (theOdb, made.verbs, theTrace);
+environment.parseScript = function (theLines) { //7/27/26 by CC -- scripts loaded from the odb parse on first call
+	return (parse.parseOutline (parse.linesToTree (theLines)));
+	};
 
 /*  Run the module the way Frontier runs a script: the top level binds
 	the handlers, and the trailing bundle -- Frontier's test-code

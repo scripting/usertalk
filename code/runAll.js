@@ -163,6 +163,13 @@ fs.readdirSync (folderBuildScripts).forEach (function (fname) {
 	const theStatements = parse.parseOutline (opmlToTree (theXml));
 	
 	const theTrace = [];
+	theTrace.push = function (entry) { //7/27/26 by CC -- a dry-run answer can leave a folder walker with no bottom; cap it so the harness always finishes
+		Array.prototype.push.call (this, entry);
+		if (this.length >= 1000000) {
+			const message = "Can't finish the script because it hit the cap of 1000000 verb calls -- likely a loop that dry-run answers never terminate.";
+			throw new Error (message);
+			}
+		};
 	const verbs = makeDryVerbs (theTrace);
 	
 	const environment = evaluate.makeEnvironment (theRealOdb, verbs, theTrace);

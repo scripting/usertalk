@@ -8,11 +8,27 @@
 	
 	by CC, 7/27/26 */
 
-const frontierOdb = require ("/Users/davewiner/Claude/frontierOdb/frontierodb.js");
+const fs = require ("fs");
 
-const pathUserFttb = "/Users/davewiner/Claude/frontierOdb/misc/root.user.fttb";
-const pathProjectsFttb = "/Users/davewiner/Claude/frontierOdb/misc/nodeEditor.projects.fttb";
-const pathSuiteJson = "/Users/davewiner/Claude/daveMigrates/misc/nodeEditor.json";
+var frontierOdb; //assigned by requireFrontierOdb, on the first loadOdb
+
+const options = { //where the database files live; defaults are DW's Mac, loadOdb (userOptions) overrides
+	pathFrontierOdb: "/Users/davewiner/Claude/frontierOdb/frontierodb.js",
+	pathUserFttb: "/Users/davewiner/Claude/frontierOdb/misc/root.user.fttb",
+	pathProjectsFttb: "/Users/davewiner/Claude/frontierOdb/misc/nodeEditor.projects.fttb",
+	pathSuiteJson: "/Users/davewiner/Claude/daveMigrates/misc/nodeEditor.json"
+	};
+
+function requireFrontierOdb () { //the require happens here, not when the module loads, so requiring usertalk works on machines that don't have these files
+	if (frontierOdb === undefined) {
+		try {
+			frontierOdb = require ("frontierodb"); //an installed copy wins
+			}
+		catch (err) {
+			frontierOdb = require (options.pathFrontierOdb);
+			}
+		}
+	}
 
 function convertValue (theValue) {
 	
@@ -51,24 +67,29 @@ function convertTopLevel (theTable) {
 	return (result);
 	}
 
-function loadOdb () {
+function loadOdb (userOptions) {
 	
-	const fs = require ("fs");
+	if (userOptions !== undefined) {
+		for (var x in userOptions) {
+			options [x] = userOptions [x];
+			}
+		}
+	requireFrontierOdb ();
 	
 	const theOdb = {};
 	
 	//the whole nodeEditor guest database: nodeEditorSuite and friends
-	const theSuiteDb = JSON.parse (fs.readFileSync (pathSuiteJson, "utf8"));
+	const theSuiteDb = JSON.parse (fs.readFileSync (options.pathSuiteJson, "utf8"));
 	Object.keys (theSuiteDb).forEach (function (name) {
 		theOdb [name] = convertValue (theSuiteDb [name]);
 		});
 	
 	//user.* -- his real user table
-	const theUserPage = frontierOdb.readFatPage (pathUserFttb);
+	const theUserPage = frontierOdb.readFatPage (options.pathUserFttb);
 	theOdb.user = convertTopLevel (theUserPage.value.value);
 	
 	//config.nodeEditor.projects -- the 511 projects
-	const theProjectsPage = frontierOdb.readFatPage (pathProjectsFttb);
+	const theProjectsPage = frontierOdb.readFatPage (options.pathProjectsFttb);
 	theOdb.config = {
 		nodeEditor: {
 			projects: convertTopLevel (theProjectsPage.value.value)

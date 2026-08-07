@@ -48,6 +48,10 @@ function tokenize (theText) {
 			break;
 			}
 		
+		if (ch === "´") { //acute accent, the older Frontier line comment, rest of line
+			break;
+			}
+		
 		if ((ch === "\"") || (ch === "'")) {
 			var literal = "";
 			ix++;
@@ -249,11 +253,14 @@ function parseLine (theText) {
 			const token = peek ();
 			if (token.type === "dot") {
 				next ();
-				if (peek ().type === "lbracket") { //computed member: adrtable^.[fname]
+				if (peek ().type === "lbracket") {
+					/*  computed member: adrtable^.[fname] -- the dot form is a
+						computed NAME, so .[2026] means the entry named 2026;
+						the bare form, table [2], means the second entry.  */
 					next ();
 					const memberExpr = parseExpr ();
 					expect ("rbracket", "a computed member");
-					node = {op: "index", left: node, index: memberExpr};
+					node = {op: "index", left: node, index: memberExpr, flComputedName: true};
 					continue;
 					}
 				const idToken = next ();
@@ -352,7 +359,7 @@ function parseLine (theText) {
 		if ((peek ().type !== "rparen") && (peek ().type !== "rbrace")) {
 			while (true) {
 				const nameToken = expect ("id", "a name list");
-				var value;
+				var value = undefined; //8/4/26 by CC -- var is function-scoped, so without the reset every name after an initialized one inherited its value: local (a = f (), b, c) gave b and c the value of f ()
 				if (peek ().type === "assign") {
 					next ();
 					value = parseExpr ();
@@ -399,6 +406,9 @@ function parseLine (theText) {
 			case "local": case "global": {
 				const which = next ().type;
 				var inits = [];
+				if (peek ().type === "eol") { //block form: bare local, declarations on the child lines
+					return ({op: which, inits, flBlockForm: true});
+					}
 				if (peek ().type === "lparen") {
 					next ();
 					inits = parseNameList ();
@@ -515,11 +525,20 @@ function parseLine (theText) {
 			
 			case "try":
 				next ();
-				if (peek ().type === "lbrace") { //inline form: try {statement}
+				if (peek ().type === "lbrace") { //inline form: try {statements}, semicolons legal, return legal
 					next ();
-					const inner = parseSimpleStatement ();
+					const inner = [];
+					if (peek ().type !== "rbrace") {
+						inner.push (parseStatement ());
+						while (peek ().type === "semicolon") {
+							next ();
+							if (peek ().type !== "rbrace") {
+								inner.push (parseStatement ());
+								}
+							}
+						}
 					expect ("rbrace", "an inline try");
-					return ({op: "try", body: [inner], elseBody: undefined});
+					return ({op: "try", body: inner, elseBody: undefined});
 					}
 				return ({op: "try", body: [], elseBody: undefined});
 			
@@ -527,6 +546,31 @@ function parseLine (theText) {
 				next ();
 				const value = parseExpr ();
 				return ({op: "case", value, body: []});
+				}
+			
+			case "kernel": {
+				/*  7/27/26 by CC -- kernel (x.y.z): a builtin's body line saying
+					"the implementation lives in the kernel here". Becomes a call
+					to the kernel special form; the path is read token by token
+					so path parts that collide with keywords still parse.  */
+				next ();
+				expect ("lparen", "a kernel statement");
+				var kernelPath = "";
+				while ((!flAtEnd ()) && (peek ().type !== "rparen")) {
+					const pathToken = next ();
+					if (pathToken.type === "dot") {
+						kernelPath += ".";
+						}
+					else {
+						kernelPath += (pathToken.name !== undefined) ? pathToken.name : ((pathToken.word !== undefined) ? pathToken.word : String (pathToken.value));
+						}
+					}
+				expect ("rparen", "a kernel statement");
+				var kernelArgNode = {op: "id", name: kernelPath.split (".") [0]};
+				kernelPath.split (".").slice (1).forEach (function (part) {
+					kernelArgNode = {op: "dot", left: kernelArgNode, name: part};
+					});
+				return ({op: "expression", expr: {op: "call", fn: {op: "id", name: "kernel"}, args: [kernelArgNode]}});
 				}
 			
 			case "break":
@@ -562,12 +606,33 @@ function parseLine (theText) {
 			}
 		}
 	
+	function attachInlineBody (statement) {
+		/*  7/27/26 by CC -- a block header can carry its body inline in
+			braces: while (typeof (nomad^) == addresstype) {nomad = nomad^}  */
+		if ((peek ().type === "lbrace") && (blockOps.indexOf (statement.op) !== -1)) {
+			next ();
+			statement.body = [];
+			if (peek ().type !== "rbrace") {
+				statement.body.push (parseStatement ());
+				while (peek ().type === "semicolon") {
+					next ();
+					if (peek ().type !== "rbrace") {
+						statement.body.push (parseStatement ());
+						}
+					}
+				}
+			expect ("rbrace", "an inline block body");
+			}
+		}
+	
 	const statements = [];
 	statements.push (parseStatement ());
+	attachInlineBody (statements [statements.length - 1]);
 	while (peek ().type === "semicolon") { //semicolons separate statements on one line, and trail legally
 		next ();
 		if (!flAtEnd ()) {
 			statements.push (parseStatement ());
+			attachInlineBody (statements [statements.length - 1]);
 			}
 		}
 	if (!flAtEnd ()) {
@@ -579,7 +644,7 @@ function parseLine (theText) {
 	return ({op: "sequence", statements});
 	}
 
-const blockOps = ["handler", "if", "else", "loop", "while", "fileloop", "for", "forin", "bundle", "with", "try", "case"];
+const blockOps = ["handler", "if", "else", "loop", "loop3", "while", "fileloop", "for", "forin", "bundle", "with", "try", "case"];
 
 function parseOutline (theNodes) {
 	
@@ -618,6 +683,24 @@ function parseOutline (theNodes) {
 			}
 		
 		if (node.subs.length > 0) {
+			if (((statement.op === "local") || (statement.op === "global")) && (statement.flBlockForm === true)) {
+				/*  block form: bare local over child lines, one declaration
+					each -- a name, or name = value.  */
+				node.subs.forEach (function (declarationNode) {
+					const declaration = parseLine (declarationNode.text);
+					if ((declaration.op === "assign") && (declaration.target.op === "id")) {
+						statement.inits.push ({name: declaration.target.name, value: declaration.value});
+						return;
+						}
+					if ((declaration.op === "expression") && (declaration.expr.op === "id")) {
+						statement.inits.push ({name: declaration.expr.name});
+						return;
+						}
+					throw new Error ("Can't parse the outline because the " + statement.op + " declaration \"" + declarationNode.text + "\" isn't a name or an assignment.");
+					});
+				statements.push (statement);
+				return;
+				}
 			if (blockOps.indexOf (statement.op) === -1) {
 				/*  a plain line with children -- Frontier treats subordinate
 					lines of a non-block statement as part of no block; in
@@ -654,10 +737,29 @@ function parseOutline (theNodes) {
 	}
 
 function linesToTree (theLines) { //flat {level, text, flComment} lines to {text, subs}, comment subtrees excluded
+	
+	/*  7/28/26 by CC -- a line ending in backslash continues on the next
+		line (usually indented one deeper): join the chain into one logical
+		line at the first line's level before building the tree.  */
+	const joinedLines = [];
+	var ixLine = 0;
+	while (ixLine < theLines.length) {
+		const line = theLines [ixLine];
+		var text = line.text;
+		var ixAhead = ixLine;
+		while (text.replace (/\s+$/, "").endsWith ("\\") && (ixAhead + 1 < theLines.length)) {
+			text = text.replace (/\s*\\\s*$/, " ");
+			ixAhead++;
+			text += theLines [ixAhead].text.trim ();
+			}
+		joinedLines.push ({level: line.level, text: text, flComment: line.flComment});
+		ixLine = ixAhead + 1;
+		}
+	
 	const root = {text: "", subs: []};
 	const stack = [root];
 	var depthSkip = -1;
-	theLines.forEach (function (line) {
+	joinedLines.forEach (function (line) {
 		if ((depthSkip >= 0) && (line.level > depthSkip)) {
 			return;
 			}

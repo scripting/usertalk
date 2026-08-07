@@ -1,6 +1,6 @@
 # hello
 
-The smallest UserTalk program -- a handler with a default parameter, and the bundle at the bottom that calls it, Frontier's test-code convention.
+The smallest UserTalk program -- a handler with a default parameter, and two calls to it.
 
 To run it, from the top of this repo:
 
