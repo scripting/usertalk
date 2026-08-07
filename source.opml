@@ -103,6 +103,35 @@
 				<outline text=""/>
 				<outline text="*By Claude Code, with Dave Winer driving. UserTalk and Frontier by Dave Winer, UserLand Software.*"/>
 				</outline>
+			<outline text="worknotes.md">
+				<outline text="#### 8/7/26; 1:35:41 PM by CC"/>
+				<outline text=""/>
+				<outline text="The nodeEditorSuite folder helpers -- getFolder, getAllServersFolder, getGitHubFolder -- now register only when the path map actually supplies a value. They used to register unconditionally, which meant the real scripts at those addresses in the database never ran: DW edited nodeEditorSuite.getAllServersFolder and his change had no effect, because the helper verb shadowed it. With no helper configured, the call falls through to the script. Applied surgically to marin's copy the same day."/>
+				<outline text=""/>
+				<outline text="Also: misc/buildSourceOpml.js was missing code/s3helper.js from its file list, so a rebuild silently dropped that file from source.opml. Caught by the file count, fixed. source.opml verifies 22 for 22."/>
+				<outline text=""/>
+				<outline text="#### 8/5/26; 11:59:00 PM by CC"/>
+				<outline text=""/>
+				<outline text="Manila week. Five real interpreter bugs found by running Manila and fixed: nameOf mangled names containing dots (Manila keys members by email address); @x == @x compared JS objects instead of the paths they name; string (address) answered &quot;[object Object]&quot;; mrcalendar.getmostrecentday and date.set were missing. Full findings in misc/manilaFindings20260805.md."/>
+				<outline text=""/>
+				<outline text="The three s3 verbs -- s3.newobject, s3.getobject, s3.objectexists -- are real, built on daveS3. UserTalk is synchronous and daveS3 isn't, so each verb runs code/s3helper.js in a child process: JSON in on stdin, JSON out on stdout, daveS3's console narration diverted to stderr. Proven against the live bucket from marin. Watch the ACLs: the allservers bucket refuses public-read."/>
+				<outline text=""/>
+				<outline text="#### 8/4/26; 5:30:00 PM by CC"/>
+				<outline text=""/>
+				<outline text="Shipped 0.3.0 to marin, and the first real build ran there -- DW's own uploadScripts and buildSallyReader, unmodified. Three interpreter bugs found on the way: parseNameList var-hoisting made locals inherit each other's values; the XML round trip cut tags at a &gt; inside a quoted attribute and dropped processing instructions; and findValueHome walked the entire database on every parentOf -- fixing it took a build from 25 seconds to 160 milliseconds."/>
+				<outline text=""/>
+				<outline text="New verbs: string.multiplereplaceall, xml.opml.getbodyaddress, op.outlinetoxml, html.directory.getrawhtml. evaluate as a special form."/>
+				<outline text=""/>
+				<outline text="Known limitation, told to DW, left alone: the file verbs read and write latin1, so characters above U+00FF corrupt on the way through."/>
+				<outline text=""/>
+				<outline text="#### 7/28/26; 6:00:00 PM by CC"/>
+				<outline text=""/>
+				<outline text="The object database went to SQL, one way -- odbSql.js builds a SQLite database from a folder of roots (odbHome.js defines the folder rules), and tables materialize lazily through proxies, so the database is never all in memory. Nothing ever goes back to the odb format. wptext decoded too, in frontierodb."/>
+				<outline text=""/>
+				<outline text="#### 7/27/26; 12:00:00 PM by CC"/>
+				<outline text=""/>
+				<outline text="The package exists: parser, evaluator, and verb library for UserTalk, the scripting language of UserLand Frontier, running on node. The 7/26 overnight study set the discipline: run beside Frontier, diff byte-for-byte, believe nothing else. 361 of 361 build scripts parse; 336 execute against the real odb."/>
+				</outline>
 			<outline text="code/parse.js">
 				<outline text="/*  Parse UserTalk into an AST. The grammar is langparser.y from the">
 					<outline text="Frontier kernel; the input is outline-structured code -- each line is"/>
