@@ -14,7 +14,6 @@ function makeEnvironment (theOdb, theVerbs, theTrace) {
 		frames: [], //the local-variable stack; each frame is {vars: {}}
 		withPaths: [] //active with-statement prefixes, innermost last
 		};
-	installConstants (theOdb);
 	installEnvironmentTable (theOdb);
 	return (environment);
 	}
@@ -39,9 +38,6 @@ function installEnvironmentTable (theOdb) {
 	if (findKey (theOdb.system, "temp") === undefined) {
 		theOdb.system.temp = {Frontier: {}}; //the kernel makes system.temp at boot
 		}
-	if (findKey (theOdb, "temp") === undefined) {
-		theOdb.temp = theOdb.system.temp; //the paths table makes temp mean system.temp; same table, two names
-		}
 	}
 
 const languageConstants = { //type names match what the typeof verb returns, so case statements compare true
@@ -61,14 +57,6 @@ const languageConstants = { //type names match what the typeof verb returns, so 
 	flatup: "flatup", flatdown: "flatdown",
 	pageup: "pageup", pagedown: "pagedown", firstlist: "firstlist", lastlist: "lastlist"
 	};
-
-function installConstants (theOdb) {
-	Object.keys (languageConstants).forEach (function (name) {
-		if (findKey (theOdb, name) === undefined) {
-			theOdb [name] = languageConstants [name];
-			}
-		});
-	}
 
 function sortedTableKeys (theTable) {
 	/*  7/27/26 by CC -- Frontier tables are always sorted by name,
@@ -204,6 +192,59 @@ function evaluate (theStatements, environment) {
 					},
 				remove: function () {
 					delete environment.odb [odbKey];
+					}
+				});
+			}
+		
+		/*  8/8/26 by CC -- temp means system.temp, the way the paths table
+			says so in Frontier. Resolving it here instead of copying it into
+			the root (which is what the old boot-time write did) keeps the two
+			names on the SAME table -- through the SQL proxy the copy was a
+			separate subtree, so temp.x and system.temp.x silently diverged.
+			A real root entry named temp, in an already-built database, still
+			wins above.  */
+		
+		if (theName.toLowerCase () === "temp") {
+			const systemKey = findKey (environment.odb, "system");
+			if (systemKey !== undefined) {
+				const systemTable = environment.odb [systemKey];
+				const tempKey = findKey (systemTable, "temp");
+				if (tempKey !== undefined) {
+					return ({
+						container: systemTable,
+						key: tempKey,
+						get: function () {
+							return (systemTable [tempKey]);
+							},
+						set: function (theValue) {
+							systemTable [tempKey] = theValue;
+							},
+						remove: function () {
+							delete systemTable [tempKey];
+							}
+						});
+					}
+				}
+			}
+		
+		/*  8/8/26 by CC -- the language constants resolve here, after the
+			database and before the paths fallback -- the same precedence they
+			had when installConstants wrote them into the root. Resolving at
+			lookup time keeps the ~50 constants out of every database the
+			evaluator touches; they were persisting as real rows in any SQL
+			odb the first time a script ran. Assigning to a constant's name
+			creates a real root entry, which wins from then on.  */
+		
+		const constantKey = findKey (languageConstants, theName);
+		if (constantKey !== undefined) {
+			return ({
+				get: function () {
+					return (languageConstants [constantKey]);
+					},
+				set: function (theValue) {
+					environment.odb [theName] = theValue;
+					},
+				remove: function () {
 					}
 				});
 			}

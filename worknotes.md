@@ -1,3 +1,9 @@
+#### 8/8/26; 11:30:00 AM by CC
+
+The language constants no longer persist into the database. installConstants wrote ~50 entries -- tabletype, addresstype, cr, tab and friends -- into the root of any SQL odb the first time a script ran; they showed up as real rows at the top of the odb browser. Now the evaluator resolves them at lookup time, after the database and before the paths fallback -- the same precedence they always had -- and writes nothing. Assigning to a constant's name still creates a real root entry, which wins from then on.
+
+Same treatment for temp: it used to be copied into the root at boot, and through the SQL proxy the copy was a separate subtree -- temp.x and system.temp.x silently diverged. Now temp resolves to system.temp itself, the way Frontier's paths table does it. system.environment and system.temp still persist; those tables really exist in Frontier. Version 0.3.1.
+
 #### 8/7/26; 3:05:18 PM by CC
 
 Researched how the object database works at the next level up -- guest databases, which arrived experimentally in Frontier 5.0 and were declared ready to build on in 5.1.4. The kernel defines a guest as a root file whose root has no system table; open guests are tracked in the compiler files table and addressed with the bracketed-filename syntax; by the OPML Editor era the guest database had become the packaging for an app, with the loader scanning the Tools folder and knowing the special top-level names. Write-up with sources: misc/research/guestDatabases.md.
