@@ -1,3 +1,9 @@
+#### 8/8/26; 3:15:00 PM by CC
+
+Menubars decode now. frontierodb 0.3.0 reads both storage forms -- the packed form a fat page carries (a savedmenuinfo record, the menubar outline, then the linked scripts one packed outline after another, matched to their lines in pre-order) and the database form (an info record whose dbaddresses point at the outline and at each script's own block). The struct sizes aren't hard-coded; the decoder finds the offset where the header's size fields account for the data exactly. Proven on DW's export of user.menus.customMenu -- 542 lines, 422 of them carrying scripts -- and on the two menubars inside nodeEditor.root that used to come through as markers.
+
+On this side, odbHome mounts .ftmb exports like the other fat pages, and odbSql stores a menubar as its own row type -- the lines as JSON, each command's script riding along -- and hands it back as a value the evaluator can tell from a table. Version 0.3.2.
+
 #### 8/8/26; 11:30:00 AM by CC
 
 The language constants no longer persist into the database. installConstants wrote ~50 entries -- tabletype, addresstype, cr, tab and friends -- into the root of any SQL odb the first time a script ran; they showed up as real rows at the top of the odb browser. Now the evaluator resolves them at lookup time, after the database and before the paths fallback -- the same precedence they always had -- and writes nothing. Assigning to a constant's name still creates a real root entry, which wins from then on.

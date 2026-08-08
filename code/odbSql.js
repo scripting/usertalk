@@ -65,6 +65,9 @@ function valueType (theValue) { //the type name that goes in the row
 	if (theValue.flOdbScript === true) {
 		return (theValue.scriptType === "outline" ? "outline" : "script");
 		}
+	if (theValue.flOdbMenubar === true) { //8/8/26 by CC -- a decoded menubar: outline lines, each command carrying its script
+		return ("menubar");
+		}
 	if (theValue.flWpText === true) {
 		return ("wptext");
 		}
@@ -100,7 +103,7 @@ function encodeValueText (theValue, theType) { //everything but a table becomes 
 			return (theValue.toISOString ());
 		case "list":
 			return (JSON.stringify (theValue));
-		case "script": case "outline":
+		case "script": case "outline": case "menubar":
 			return (JSON.stringify (theValue.lines));
 		case "wptext":
 			return (theValue.text);
@@ -127,6 +130,8 @@ function decodeValue (theText, theType) {
 			return (JSON.parse (theText));
 		case "script": case "outline":
 			return ({flOdbScript: true, scriptType: theType, lines: JSON.parse (theText)});
+		case "menubar":
+			return ({flOdbMenubar: true, lines: JSON.parse (theText)});
 		case "wptext":
 			return ({
 				flWpText: true,
@@ -149,7 +154,7 @@ function flPlainTable (theValue) { //a table, as opposed to a value that happens
 	if (theValue.flOdbSqlTable === true) { //already one of ours
 		return (true);
 		}
-	return ((theValue.flOdbScript === undefined) && (theValue.flWpText === undefined) &&
+	return ((theValue.flOdbScript === undefined) && (theValue.flOdbMenubar === undefined) && (theValue.flWpText === undefined) &&
 		(theValue.flOdbAddressText === undefined) && (theValue.type === undefined) &&
 		(!Array.isArray (theValue)) && (!(theValue instanceof Date)));
 	}

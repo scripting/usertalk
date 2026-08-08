@@ -9,9 +9,9 @@
 	   database already dumped by frontierOdb) is a DATABASE: its
 	   top-level entries merge into the table at that spot, the way
 	   guest databases blend into Frontier's namespace via system.paths.
-	3. A .fttb, .ftop or .ftsc file (a fat page export) is a SINGLE
-	   OBJECT: it mounts as one entry named for the file, extension
-	   dropped. Name the file what you want the object called.
+	3. A .fttb, .ftop, .ftsc or .ftmb file (a fat page export) is a
+	   SINGLE OBJECT: it mounts as one entry named for the file,
+	   extension dropped. Name the file what you want the object called.
 	4. Later arrivals win collisions -- files load alphabetically, then
 	   subfolders. When both sides are tables they merge; otherwise the
 	   newcomer replaces, and the collision is logged.
@@ -79,6 +79,10 @@ function convertValue (theValue) {
 		return ({flOdbAddressText: true, path: theValue.path});
 		}
 	
+	if ((theValue.type === "menubar") && (theValue.lines !== undefined)) { //8/8/26 by CC -- a decoded menubar: outline lines, each command carrying its script
+		return ({flOdbMenubar: true, lines: theValue.lines});
+		}
+
 	if ((theValue.type === "wptext") && (theValue.text !== undefined)) {
 		return ({ //word-processing text: knows what it is, reads as its text
 			flWpText: true,
@@ -100,7 +104,7 @@ function loadFolder (folderPath, logCallback) {
 	function flTable (theValue) {
 		return ((theValue !== undefined) && (theValue !== null) &&
 			(typeof theValue === "object") &&
-			(theValue.flOdbScript === undefined) && (theValue.flOdbAddressText === undefined) &&
+			(theValue.flOdbScript === undefined) && (theValue.flOdbMenubar === undefined) && (theValue.flOdbAddressText === undefined) &&
 			(theValue.type === undefined) && (!Array.isArray (theValue)));
 		}
 	
@@ -162,7 +166,7 @@ function loadFolder (folderPath, logCallback) {
 				log ("Merged the database " + fname + ".");
 				return;
 				}
-			if ((extension === ".fttb") || (extension === ".ftop") || (extension === ".ftsc")) {
+			if ((extension === ".fttb") || (extension === ".ftop") || (extension === ".ftsc") || (extension === ".ftmb")) { //8/8/26 by CC -- .ftmb is a menubar export
 				const thePage = frontierOdb.readFatPage (filePath);
 				mergeInto (theTable, baseName, convertValue (thePage.value), fname, "");
 				log ("Mounted " + fname + " as " + baseName + ".");
