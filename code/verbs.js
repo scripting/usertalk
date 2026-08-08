@@ -1013,6 +1013,7 @@ function makeVerbs (thePathMap, theTrace) {
 		};
 	
 	verbs ["callscript"] = verbs ["lang.callscript"];
+	verbs ["thread.callscript"] = verbs ["lang.callscript"]; //8/8/26 by CC -- runs synchronously; nodeEditor's button scripts all lead with it
 	
 	verbs ["table.assign"] = function (args) { //table.assign (@adr, value)
 		const theAddress = args [0];

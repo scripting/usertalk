@@ -11,7 +11,7 @@
 					<outline text="&quot;name&quot;: &quot;usertalk&quot;,"/>
 					<outline text="&quot;description&quot;: &quot;The UserTalk language, running on Node -- parser, evaluator, and verb library for the scripting language of UserLand Frontier.&quot;,"/>
 					<outline text="&quot;author&quot;: &quot;Dave Winer &lt;dave@scripting.com&gt;&quot;,"/>
-					<outline text="&quot;version&quot;: &quot;0.3.2&quot;,"/>
+					<outline text="&quot;version&quot;: &quot;0.3.3&quot;,"/>
 					<outline text="&quot;main&quot;: &quot;code/usertalk.js&quot;,"/>
 					<outline text="&quot;files&quot;: [">
 						<outline text="&quot;readme.md&quot;"/>
@@ -102,6 +102,10 @@
 				<outline text="*By Claude Code, with Dave Winer driving. UserTalk and Frontier by Dave Winer, UserLand Software.*"/>
 				</outline>
 			<outline text="worknotes.md">
+				<outline text="#### 8/8/26; 6:45:00 PM by CC"/>
+				<outline text=""/>
+				<outline text="thread.callscript is a verb now, an alias of lang.callscript -- it runs the script synchronously rather than on a thread, which is the honest version of what this interpreter can do. It's the first line of every button script in nodeEditor's buttons table, so without it no button could reach its suite script. Version 0.3.3."/>
+				<outline text=""/>
 				<outline text="#### 8/8/26; 3:15:00 PM by CC"/>
 				<outline text=""/>
 				<outline text="Menubars decode now. frontierodb 0.3.0 reads both storage forms -- the packed form a fat page carries (a savedmenuinfo record, the menubar outline, then the linked scripts one packed outline after another, matched to their lines in pre-order) and the database form (an info record whose dbaddresses point at the outline and at each script's own block). The struct sizes aren't hard-coded; the decoder finds the offset where the header's size fields account for the data exactly. Proven on DW's export of user.menus.customMenu -- 542 lines, 422 of them carrying scripts -- and on the two menubars inside nodeEditor.root that used to come through as markers."/>
@@ -4740,6 +4744,7 @@
 						</outline>
 					<outline text=""/>
 					<outline text="verbs [&quot;callscript&quot;] = verbs [&quot;lang.callscript&quot;];"/>
+					<outline text="verbs [&quot;thread.callscript&quot;] = verbs [&quot;lang.callscript&quot;]; //8/8/26 by CC -- runs synchronously; nodeEditor's button scripts all lead with it"/>
 					<outline text=""/>
 					<outline text="verbs [&quot;table.assign&quot;] = function (args) { //table.assign (@adr, value)">
 						<outline text="const theAddress = args [0];"/>

@@ -2,7 +2,7 @@
 	"name": "usertalk",
 	"description": "The UserTalk language, running on Node -- parser, evaluator, and verb library for the scripting language of UserLand Frontier.",
 	"author": "Dave Winer <dave@scripting.com>",
-	"version": "0.3.2",
+	"version": "0.3.3",
 	"main": "code/usertalk.js",
 	"files": [
 		"readme.md"

@@ -1,3 +1,7 @@
+#### 8/8/26; 6:45:00 PM by CC
+
+thread.callscript is a verb now, an alias of lang.callscript -- it runs the script synchronously rather than on a thread, which is the honest version of what this interpreter can do. It's the first line of every button script in nodeEditor's buttons table, so without it no button could reach its suite script. Version 0.3.3.
+
 #### 8/8/26; 3:15:00 PM by CC
 
 Menubars decode now. frontierodb 0.3.0 reads both storage forms -- the packed form a fat page carries (a savedmenuinfo record, the menubar outline, then the linked scripts one packed outline after another, matched to their lines in pre-order) and the database form (an info record whose dbaddresses point at the outline and at each script's own block). The struct sizes aren't hard-coded; the decoder finds the offset where the header's size fields account for the data exactly. Proven on DW's export of user.menus.customMenu -- 542 lines, 422 of them carrying scripts -- and on the two menubars inside nodeEditor.root that used to come through as markers.
