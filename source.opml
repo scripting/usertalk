@@ -104,6 +104,10 @@
 				<outline text="*By Claude Code, with Dave Winer driving. UserTalk and Frontier by Dave Winer, UserLand Software.*"/>
 				</outline>
 			<outline text="worknotes.md">
+				<outline text="#### 8/7/26; 3:05:18 PM by CC"/>
+				<outline text=""/>
+				<outline text="Researched how the object database works at the next level up -- guest databases, which arrived experimentally in Frontier 5.0 and were declared ready to build on in 5.1.4. The kernel defines a guest as a root file whose root has no system table; open guests are tracked in the compiler files table and addressed with the bracketed-filename syntax; by the OPML Editor era the guest database had become the packaging for an app, with the loader scanning the Tools folder and knowing the special top-level names. Write-up with sources: misc/research/guestDatabases.md."/>
+				<outline text=""/>
 				<outline text="#### 8/7/26; 1:35:41 PM by CC"/>
 				<outline text=""/>
 				<outline text="The nodeEditorSuite folder helpers -- getFolder, getAllServersFolder, getGitHubFolder -- now register only when the path map actually supplies a value. They used to register unconditionally, which meant the real scripts at those addresses in the database never ran: DW edited nodeEditorSuite.getAllServersFolder and his change had no effect, because the helper verb shadowed it. With no helper configured, the call falls through to the script. Applied surgically to marin's copy the same day."/>
