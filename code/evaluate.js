@@ -1788,17 +1788,33 @@ function evaluate (theStatements, environment) {
 				break;
 			
 			case "with": {
-				const table = evalExpr (statement.path);
-				var withTable = table;
-				if ((table !== undefined) && (table.flAddress === true)) {
-					withTable = table.reference.get ();
-					}
-				environment.withPaths.push (withTable);
+				
+				/*  8/9/26 by CC -- with takes a LIST of tables: "with a, b"
+					searches a first, then b. The lookup scans withPaths from
+					the end, so the listed-first table is pushed LAST. Found
+					by worldOutlineSuite.processMacros, which scopes over the
+					builtin macros and the user macros in one statement.  */
+				
+				const statementPaths = (statement.paths === undefined) ? [statement.path] : statement.paths;
+				var ctPushed = 0;
 				try {
+					var ixPath;
+					for (ixPath = statementPaths.length - 1; ixPath >= 0; ixPath--) {
+						const table = evalExpr (statementPaths [ixPath]);
+						var withTable = table;
+						if ((table !== undefined) && (table !== null) && (table.flAddress === true)) {
+							withTable = table.reference.get ();
+							}
+						environment.withPaths.push (withTable);
+						ctPushed++;
+						}
 					runBody (statement.body);
 					}
 				finally {
-					environment.withPaths.pop ();
+					while (ctPushed > 0) {
+						environment.withPaths.pop ();
+						ctPushed--;
+						}
 					}
 				break;
 				}

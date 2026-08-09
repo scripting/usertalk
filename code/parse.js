@@ -519,8 +519,12 @@ function parseLine (theText) {
 			
 			case "with": {
 				next ();
-				const path = parseExpr ();
-				return ({op: "with", path, body: []});
+				const paths = [parseExpr ()]; //8/9/26 by CC -- with takes a comma-separated list of tables
+				while (peek ().type === "comma") {
+					next ();
+					paths.push (parseExpr ());
+					}
+				return ({op: "with", path: paths [0], paths, body: []});
 				}
 			
 			case "try":
